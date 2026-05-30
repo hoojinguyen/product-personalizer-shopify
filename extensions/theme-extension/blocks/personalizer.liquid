@@ -1,0 +1,242 @@
+{%- comment -%}
+  Dynamic Product Personalizer (Zepto Mode)
+  Integrates with product metafield "app.customization_config"
+{%- endcomment -%}
+
+{%- assign config = product.metafields.app.customization_config.value -%}
+
+{%- if config and config.enabled == true and config.options.size > 0 -%}
+  {%- assign enabled = true -%}
+  {%- assign is_demo = false -%}
+  {%- assign options = config.options -%}
+{%- elsif request.design_mode -%}
+  {%- comment -%} Theme Editor preview fallback {%- endcomment -%}
+  {%- assign enabled = true -%}
+  {%- assign is_demo = true -%}
+{%- else -%}
+  {%- assign enabled = false -%}
+{%- endif -%}
+
+{%- if enabled -%}
+  <div class="personalizer-card" data-product-id="{{ product.id }}">
+    
+    <!-- Title / Header -->
+    <div class="personalizer-header">
+      <span class="personalizer-sparkle">✨</span>
+      <h4 class="personalizer-title">{{ block.settings.heading }}</h4>
+    </div>
+
+    {%- if is_demo -%}
+      {%- comment -%} ==================== DEMO MODE FOR THEME EDITOR ==================== {%- endcomment -%}
+      
+      <!-- Demo Input 1: Text -->
+      <div class="personalizer-group" data-option-type="text">
+        <label class="personalizer-label" for="demo-field-text">
+          <span style="display: flex; align-items: center; gap: 8px;">
+            Custom Engraving Text <span style="color: hsl(354, 85%, 45%);">*</span>
+          </span>
+          <span style="display: flex; align-items: center; gap: 6px;">
+            <span class="personalizer-fee-tag">+$5.00</span>
+            <span class="personalizer-char-count" data-counter-for="demo-field-text">0/30</span>
+          </span>
+        </label>
+        <input 
+          type="text" 
+          id="demo-field-text"
+          class="personalizer-input personalizer-input-text"
+          name="properties[Custom Engraving Text]"
+          maxlength="30"
+          placeholder="Type your engraving here..."
+          autocomplete="off"
+          required
+        >
+      </div>
+
+      <!-- Demo Input 2: Select Font -->
+      <div class="personalizer-group" data-option-type="select">
+        <label class="personalizer-label" for="demo-field-font">
+          <span>Font Style</span>
+        </label>
+        <select 
+          id="demo-field-font"
+          class="personalizer-select personalizer-input-select"
+          name="properties[Font Style]"
+        >
+          <option value="Arial">Arial</option>
+          <option value="Georgia">Georgia</option>
+          <option value="Brush Script MT">Brush Script MT</option>
+          <option value="Pacifico">Pacifico (Google Font)</option>
+        </select>
+      </div>
+
+      <!-- Demo Input 3: Swatches -->
+      <div class="personalizer-group" data-option-type="swatch">
+        <label class="personalizer-label">
+          <span>Engraving Color</span>
+        </label>
+        <input 
+          type="hidden" 
+          id="demo-field-color-hidden"
+          class="personalizer-input-swatch-value"
+          name="properties[Engraving Color]"
+          value="#000000"
+        >
+        <div class="personalizer-swatch-list" data-target-input="demo-field-color-hidden">
+          <button type="button" class="personalizer-swatch-btn active" style="background-color: #000000;" data-color="#000000" aria-label="Select color #000000"></button>
+          <button type="button" class="personalizer-swatch-btn" style="background-color: #E63946;" data-color="#E63946" aria-label="Select color #E63946"></button>
+          <button type="button" class="personalizer-swatch-btn" style="background-color: #457B9D;" data-color="#457B9D" aria-label="Select color #457B9D"></button>
+          <button type="button" class="personalizer-swatch-btn" style="background-color: #1D3557;" data-color="#1D3557" aria-label="Select color #1D3557"></button>
+        </div>
+      </div>
+
+      <!-- Demo Input 4: Checkbox -->
+      <div class="personalizer-group" data-option-type="checkbox">
+        <label class="personalizer-label" for="demo-field-gift">
+          <span>Add Premium Gift Box</span>
+          <span class="personalizer-fee-tag">+$2.50</span>
+        </label>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
+          <input 
+            type="checkbox" 
+            id="demo-field-gift"
+            class="personalizer-checkbox personalizer-input-checkbox"
+            name="properties[Add Premium Gift Box]"
+            value="Yes"
+            style="width: 18px; height: 18px; accent-color: hsl(160, 100%, 30%); cursor: pointer;"
+          >
+          <label for="demo-field-gift" style="font-size: 14px; cursor: pointer; font-weight: 500;">
+            Select to enable
+          </label>
+        </div>
+      </div>
+
+    {%- else -%}
+      {%- comment -%} ==================== REAL STORE FRONT MODE ==================== {%- endcomment -%}
+      
+      <!-- Dynamic Options Loop -->
+      {%- for option in options -%}
+        <div class="personalizer-group" data-option-type="{{ option.type }}">
+          
+          <!-- Label with Upcharge fee badge -->
+          <label class="personalizer-label" for="field-{{ option.id }}">
+            <span style="display: flex; align-items: center; gap: 8px;">
+              {{ option.label }}
+              {%- if option.required -%}<span style="color: hsl(354, 85%, 45%);">*</span>{%- endif -%}
+            </span>
+            <span style="display: flex; align-items: center; gap: 6px;">
+              {%- if option.priceUpcharge > 0 -%}
+                <span class="personalizer-fee-tag">+{{ option.priceUpcharge | times: 100 | money }}</span>
+              {%- endif -%}
+              {%- if option.type == 'text' -%}
+                <span class="personalizer-char-count" data-counter-for="field-{{ option.id }}">0/{{ option.maxChars | default: 50 }}</span>
+              {%- endif -%}
+            </span>
+          </label>
+
+          <!-- Conditional Input Rendering -->
+          {%- case option.type -%}
+            
+            {%- when 'text' -%}
+              <input 
+                type="text" 
+                id="field-{{ option.id }}"
+                class="personalizer-input personalizer-input-text"
+                name="properties[{{ option.label }}]"
+                maxlength="{{ option.maxChars | default: 50 }}"
+                placeholder="Type your engraving here..."
+                autocomplete="off"
+                {% if option.required %}required{% endif %}
+              >
+
+            {%- when 'select' -%}
+              {%- assign choices = option.choices | split: "," -%}
+              <select 
+                id="field-{{ option.id }}"
+                class="personalizer-select personalizer-input-select"
+                name="properties[{{ option.label }}]"
+                {% if option.required %}required{% endif %}
+              >
+                {%- for choice in choices -%}
+                  {%- assign val = choice | strip -%}
+                  <option value="{{ val }}">{{ val }}</option>
+                {%- endfor -%}
+              </select>
+
+            {%- when 'swatch' -%}
+              {%- assign colors = option.choices | split: "," -%}
+              {%- assign first_color = colors[0] | strip -%}
+              
+              <!-- Hidden input that actually submits the active color property to cart -->
+              <input 
+                type="hidden" 
+                id="field-{{ option.id }}"
+                class="personalizer-input-swatch-value"
+                name="properties[{{ option.label }}]"
+                value="{{ first_color }}"
+              >
+              
+              <div class="personalizer-swatch-list" data-target-input="field-{{ option.id }}">
+                {%- for color in colors -%}
+                  {%- assign hex = color | strip -%}
+                  <button 
+                    type="button"
+                    class="personalizer-swatch-btn{% if forloop.first %} active{% endif %}" 
+                    style="background-color: {{ hex }};" 
+                    data-color="{{ hex }}"
+                    data-option-id="{{ option.id }}"
+                    aria-label="Select color {{ hex }}"
+                  ></button>
+                {%- endfor -%}
+              </div>
+
+            {%- when 'checkbox' -%}
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
+                <input 
+                  type="checkbox" 
+                  id="field-{{ option.id }}"
+                  class="personalizer-checkbox personalizer-input-checkbox"
+                  name="properties[{{ option.label }}]"
+                  value="Yes"
+                  style="width: 18px; height: 18px; accent-color: hsl(160, 100%, 30%); cursor: pointer;"
+                  {% if option.required %}required{% endif %}
+                >
+                <label for="field-{{ option.id }}" style="font-size: 14px; cursor: pointer; font-weight: 500;">
+                  Select to enable
+                </label>
+              </div>
+
+          {%- endcase -%}
+
+        </div>
+      {%- endfor -%}
+    {%- endif -%}
+
+    <!-- Premium Real-time Live Preview -->
+    <div class="personalizer-group" style="margin-top: 10px;">
+      <label class="personalizer-label">Engraving Live Preview</label>
+      <div class="personalizer-preview-box">
+        <div class="personalizer-preview-placeholder">Live engraving preview will appear here...</div>
+        <div class="personalizer-preview-text" style="display: none;"></div>
+        <div class="personalizer-preview-badge" style="display: none;"></div>
+      </div>
+    </div>
+
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Product Personalization",
+  "target": "section",
+  "stylesheet": "personalizer.css",
+  "javascript": "personalizer.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Personalize Your Item"
+    }
+  ]
+}
+{% endschema %}

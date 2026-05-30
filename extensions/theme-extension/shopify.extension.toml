@@ -1,0 +1,7 @@
+api_version = "2025-10"
+uid = "ba697fac-60ca-fa5a-041c-eabc1e088003f2273023"
+
+[[extensions]]
+type = "theme"
+name = "Product Personalization"
+handle = "product-personalization"

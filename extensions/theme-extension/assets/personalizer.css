@@ -1,0 +1,302 @@
+/* Premium CSS for Product Personalizer Theme Extension */
+
+/* Import beautiful typography options from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Dancing+Script:wght@700&family=Pacifico&family=Playfair+Display:ital,wght@0,600;1,600&family=Montserrat:wght@500;700&display=swap');
+
+.personalizer-card {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: hsla(210, 20%, 98%, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsla(210, 14%, 83%, 0.6);
+  border-radius: 16px;
+  padding: 24px;
+  margin: 20px 0;
+  box-shadow: 0 8px 30px hsla(210, 25%, 90%, 0.4);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-card {
+    background: hsla(210, 20%, 10%, 0.65);
+    border-color: hsla(210, 14%, 25%, 0.5);
+    box-shadow: 0 8px 30px hsla(0, 0%, 0%, 0.3);
+  }
+}
+
+.personalizer-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px hsla(210, 25%, 85%, 0.5);
+  border-color: hsla(210, 14%, 75%, 0.8);
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-card:hover {
+    box-shadow: 0 12px 40px hsla(0, 0%, 0%, 0.4);
+    border-color: hsla(210, 14%, 35%, 0.7);
+  }
+}
+
+/* Header styling */
+.personalizer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.personalizer-sparkle {
+  color: hsl(160, 100%, 35%);
+  animation: sparkle-glow 2s infinite ease-in-out;
+  font-size: 1.25rem;
+}
+
+.personalizer-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: hsl(210, 24%, 16%);
+  letter-spacing: -0.02em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-title {
+    color: hsl(210, 20%, 95%);
+  }
+}
+
+/* Input elements */
+.personalizer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+.personalizer-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: hsl(210, 10%, 45%);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-label {
+    color: hsl(210, 10%, 70%);
+  }
+}
+
+.personalizer-input {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1.5px solid hsl(210, 14%, 85%);
+  background: hsl(0, 0%, 100%);
+  color: hsl(210, 24%, 16%);
+  outline: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-input {
+    background: hsl(210, 20%, 12%);
+    border-color: hsl(210, 14%, 25%);
+    color: hsl(210, 20%, 95%);
+  }
+}
+
+.personalizer-input:focus {
+  border-color: hsl(160, 100%, 35%);
+  box-shadow: 0 0 0 4px hsla(160, 100%, 35%, 0.15);
+}
+
+/* Select inputs */
+.personalizer-select {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1.5px solid hsl(210, 14%, 85%);
+  background: hsl(0, 0%, 100%);
+  color: hsl(210, 24%, 16%);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  padding-right: 40px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-select {
+    background-color: hsl(210, 20%, 12%);
+    border-color: hsl(210, 14%, 25%);
+    color: hsl(210, 20%, 95%);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='hsl(210, 20%, 80%)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+}
+
+.personalizer-select:focus {
+  border-color: hsl(160, 100%, 35%);
+  box-shadow: 0 0 0 4px hsla(160, 100%, 35%, 0.15);
+}
+
+/* Color Swatches styling */
+.personalizer-swatch-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.personalizer-swatch-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid hsl(0, 0%, 100%);
+  box-shadow: 0 2px 6px hsla(0, 0%, 0%, 0.15);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  outline: none;
+  padding: 0;
+}
+
+.personalizer-swatch-btn:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 10px hsla(0, 0%, 0%, 0.25);
+}
+
+.personalizer-swatch-btn.active {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 3px hsl(160, 100%, 35%), 0 2px 8px hsla(0, 0%, 0%, 0.25);
+}
+
+/* Custom Checkbox Styles */
+.personalizer-checkbox {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.personalizer-checkbox:hover {
+  transform: scale(1.08);
+}
+
+.personalizer-checkbox:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px hsla(160, 100%, 35%, 0.25);
+}
+
+/* Real-time Dynamic Canvas Preview */
+.personalizer-preview-box {
+  background: radial-gradient(circle at top left, hsl(210, 20%, 94%), hsl(210, 14%, 88%));
+  border: 1px dashed hsl(210, 14%, 78%);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-preview-box {
+    background: radial-gradient(circle at top left, hsl(210, 20%, 8%), hsl(210, 20%, 14%));
+    border-color: hsl(210, 14%, 25%);
+  }
+}
+
+.personalizer-preview-text {
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+  transition: color 0.3s ease, font-family 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  line-height: 1.2;
+}
+
+.personalizer-preview-placeholder {
+  font-size: 0.95rem;
+  color: hsl(210, 10%, 55%);
+  font-style: italic;
+}
+
+.personalizer-preview-badge {
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: hsla(210, 14%, 80%, 0.6);
+  color: hsl(210, 15%, 35%);
+  padding: 4px 10px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-preview-badge {
+    background: hsla(210, 14%, 20%, 0.6);
+    color: hsl(210, 15%, 75%);
+  }
+}
+
+/* Character Counter Progress */
+.personalizer-char-count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.personalizer-char-count.warning {
+  color: hsl(36, 100%, 45%);
+  font-weight: 700;
+}
+
+.personalizer-char-count.error {
+  color: hsl(354, 85%, 45%);
+  font-weight: 700;
+  animation: shake 0.4s ease-in-out;
+}
+
+/* Upcharge Info badge */
+.personalizer-fee-tag {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: hsl(160, 100%, 30%);
+  background: hsla(160, 100%, 35%, 0.12);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid hsla(160, 100%, 35%, 0.2);
+}
+
+@media (prefers-color-scheme: dark) {
+  .personalizer-fee-tag {
+    color: hsl(160, 100%, 40%);
+    background: hsla(160, 100%, 35%, 0.18);
+  }
+}
+
+/* Animations */
+@keyframes sparkle-glow {
+  0%, 100% { opacity: 0.6; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); filter: drop-shadow(0 0 4px hsla(160, 100%, 35%, 0.6)); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}

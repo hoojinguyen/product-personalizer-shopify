@@ -65,24 +65,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { products };
 };
 
-// Action: Save customization config to product metafield
+// Action: Save dynamic customization config to product metafield
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   
   const productId = formData.get("productId") as string;
   const enabled = formData.get("enabled") === "true";
-  const maxChars = parseInt(formData.get("maxChars") as string) || 50;
-  const fee = parseFloat(formData.get("fee") as string) || 0.0;
-  const fontOptions = (formData.get("fonts") as string)?.split(",").map(f => f.trim()) || ["Arial", "Script", "Gothic"];
-  const colorOptions = (formData.get("colors") as string)?.split(",").map(c => c.trim()) || ["#000000", "#FF0000", "#0000FF"];
+  const optionsJson = formData.get("options") as string;
+
+  let options = [];
+  try {
+    options = JSON.parse(optionsJson);
+  } catch (e) {
+    console.error("Error parsing options JSON in action", e);
+  }
 
   const config = {
     enabled,
-    maxChars,
-    fee,
-    fontOptions,
-    colorOptions
+    options
   };
 
   const response = await admin.graphql(
@@ -118,6 +119,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { ok: true, errors: responseJson.data?.metafieldsSet?.userErrors || [] };
 };
 
+interface CustomizationOption {
+  id: string;
+  type: "text" | "select" | "swatch" | "checkbox";
+  label: string;
+  required: boolean;
+  priceUpcharge: number;
+  maxChars?: number; // For type === "text"
+  choices?: string; // For type === "select" or "swatch", comma-separated list
+}
+
 export default function Settings() {
   const { products } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -125,10 +136,7 @@ export default function Settings() {
 
   const [selectedProduct, setSelectedProduct] = useState<any>(products[0] || null);
   const [enabled, setEnabled] = useState(false);
-  const [maxChars, setMaxChars] = useState(50);
-  const [fee, setFee] = useState(0.0);
-  const [fonts, setFonts] = useState("Arial, Script, Gothic");
-  const [colors, setColors] = useState("#000000, #E63946, #457B9D, #1D3557");
+  const [options, setOptions] = useState<CustomizationOption[]>([]);
 
   useEffect(() => {
     if (selectedProduct) {
@@ -136,30 +144,116 @@ export default function Settings() {
       if (configVal) {
         try {
           const config = JSON.parse(configVal);
-          setEnabled(config.enabled ?? false);
-          setMaxChars(config.maxChars ?? 50);
-          setFee(config.fee ?? 0.0);
-          setFonts(config.fontOptions?.join(", ") ?? "Arial, Script, Gothic");
-          setColors(config.colorOptions?.join(", ") ?? "#000000, #E63946, #457B9D, #1D3557");
+          
+          if (config.options) {
+            // New schema format
+            setOptions(config.options);
+            setEnabled(config.enabled ?? false);
+          } else {
+            // Self-healing layer: Auto-migrate old static schema into dynamic options schema
+            const migrated: CustomizationOption[] = [];
+            if (config.enabled) {
+              migrated.push({
+                id: "migrated-text",
+                type: "text",
+                label: "Custom Engraving Text",
+                required: true,
+                priceUpcharge: config.fee ?? 0.0,
+                maxChars: config.maxChars ?? 50
+              });
+              if (config.fontOptions && config.fontOptions.length > 0) {
+                migrated.push({
+                  id: "migrated-font",
+                  type: "select",
+                  label: "Font Style",
+                  required: true,
+                  priceUpcharge: 0.0,
+                  choices: config.fontOptions.join(", ")
+                });
+              }
+              if (config.colorOptions && config.colorOptions.length > 0) {
+                migrated.push({
+                  id: "migrated-color",
+                  type: "swatch",
+                  label: "Text Color",
+                  required: true,
+                  priceUpcharge: 0.0,
+                  choices: config.colorOptions.join(", ")
+                });
+              }
+            }
+            setOptions(migrated);
+            setEnabled(config.enabled ?? false);
+          }
         } catch (e) {
-          console.error("Error parsing product config", e);
+          console.error("Error parsing product config, using default", e);
+          setOptions([]);
+          setEnabled(false);
         }
       } else {
-        // Reset defaults
+        // Reset defaults for clean product
         setEnabled(false);
-        setMaxChars(50);
-        setFee(0.0);
-        setFonts("Arial, Script, Gothic");
-        setColors("#000000, #E63946, #457B9D, #1D3557");
+        setOptions([
+          {
+            id: "opt-default-text",
+            type: "text",
+            label: "Engraving Text",
+            required: true,
+            priceUpcharge: 0.0,
+            maxChars: 30
+          }
+        ]);
       }
     }
   }, [selectedProduct]);
 
   useEffect(() => {
     if (fetcher.data?.ok) {
-      shopify.toast.show("Personalization settings updated successfully!");
+      shopify.toast.show("Personalization options updated successfully!");
     }
   }, [fetcher.data, shopify]);
+
+  const handleAddOption = () => {
+    const newOption: CustomizationOption = {
+      id: `opt-${Date.now()}`,
+      type: "text",
+      label: "New Option Label",
+      required: false,
+      priceUpcharge: 0.0,
+      maxChars: 50
+    };
+    setOptions([...options, newOption]);
+  };
+
+  const handleRemoveOption = (id: string) => {
+    setOptions(options.filter(o => o.id !== id));
+  };
+
+  const handleUpdateOption = (id: string, updates: Partial<CustomizationOption>) => {
+    setOptions(options.map(o => {
+      if (o.id === id) {
+        const updated = { ...o, ...updates };
+        // Reset type-specific fields if option type changes
+        if (updates.type && updates.type !== o.type) {
+          if (updates.type === "text") {
+            updated.maxChars = 50;
+            delete updated.choices;
+          } else if (updates.type === "select") {
+            updated.choices = "Option A, Option B, Option C";
+            delete updated.maxChars;
+          } else if (updates.type === "swatch") {
+            updated.choices = "#000000, #E63946, #457B9D, #1D3557";
+            delete updated.maxChars;
+          } else if (updates.type === "checkbox") {
+            delete updated.maxChars;
+            delete updated.choices;
+          }
+        }
+        return updated;
+      }
+      return o;
+    }));
+  };
 
   const handleSave = () => {
     if (!selectedProduct) return;
@@ -167,10 +261,7 @@ export default function Settings() {
       {
         productId: selectedProduct.id,
         enabled: String(enabled),
-        maxChars: String(maxChars),
-        fee: String(fee),
-        fonts,
-        colors
+        options: JSON.stringify(options)
       },
       { method: "POST" }
     );
@@ -178,22 +269,22 @@ export default function Settings() {
 
   return (
     <s-page heading="Product Personalizer Settings">
-      <s-section heading="Select Product to Personalize">
+      <s-section heading="Manage Customization Templates (Zepto Mode)">
         <s-paragraph>
-          Choose a product from your store to configure options like engraving, custom fonts, colors, and add-on pricing.
+          Create multi-option personalization templates. Add engraving inputs, font/color options, custom add-ons, or checkbox selections that map automatically to checkout line-item properties.
         </s-paragraph>
         
         {products.length === 0 ? (
-          <s-box padding="large" background="subdued" borderRadius="base" borderWidth="base">
+          <s-box padding="large" background={"subdued" as any} borderRadius="base" borderWidth="base">
             <s-paragraph>No products found in your store. Please create a product first!</s-paragraph>
           </s-box>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "24px", marginTop: "16px" }}>
             {/* Product List */}
-            <s-box padding="base" borderRadius="base" borderWidth="base" background="surface">
-              <s-stack direction="block" gap="small">
-                <s-text size="medium" weight="bold">Products</s-text>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "400px", overflowY: "auto" }}>
+            <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
+              <s-stack direction="block" gap={"small" as any}>
+                <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>Store Products</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "500px", overflowY: "auto" }}>
                   {products.map((product: any) => {
                     const isConfigured = product.metafield?.value ? JSON.parse(product.metafield.value).enabled : false;
                     return (
@@ -221,7 +312,7 @@ export default function Settings() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{product.title}</div>
                           <div style={{ fontSize: "12px", color: isConfigured ? "#008060" : "#6d7175" }}>
-                            {isConfigured ? "🟢 Enabled" : "⚪ Disabled"}
+                            {isConfigured ? "🟢 Active Options" : "⚪ No Customizations"}
                           </div>
                         </div>
                       </button>
@@ -231,92 +322,203 @@ export default function Settings() {
               </s-stack>
             </s-box>
 
-            {/* Config Panel */}
+            {/* Dynamic Customization Config Panel */}
             {selectedProduct && (
-              <s-box padding="large" borderRadius="base" borderWidth="base" background="surface">
-                <s-stack direction="block" gap="medium">
+              <s-box padding="large" borderRadius="base" borderWidth="base" background={"surface" as any}>
+                <s-stack direction="block" gap={"medium" as any}>
+                  
+                  {/* Selected Product Title */}
                   <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
                     {selectedProduct.featuredImage?.url && (
                       <img src={selectedProduct.featuredImage.url} alt="" style={{ width: "60px", height: "60px", borderRadius: "8px", objectFit: "cover" }} />
                     )}
                     <div>
-                      <s-text size="large" weight="bold">{selectedProduct.title}</s-text>
-                      <s-paragraph>Configure product customization options.</s-paragraph>
+                      <span style={{ fontSize: "20px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>{selectedProduct.title}</span>
+                      <s-paragraph>Configure interactive custom builder settings.</s-paragraph>
                     </div>
                   </div>
 
-                  <hr style={{ border: 0, borderTop: "1px solid #e1e3e5", margin: "16px 0" }} />
+                  <hr style={{ border: 0, borderTop: "1px solid #e1e3e5", margin: "8px 0" }} />
 
                   {/* Enable Switch */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
                     <input
                       type="checkbox"
                       id="enable-checkbox"
                       checked={enabled}
                       onChange={(e) => setEnabled(e.target.checked)}
-                      style={{ width: "20px", height: "20px", accentColor: "#008060" }}
+                      style={{ width: "20px", height: "20px", accentColor: "#008060", cursor: "pointer" }}
                     />
-                    <label htmlFor="enable-checkbox" style={{ fontWeight: 600, fontSize: "16px", cursor: "pointer" }}>
-                      Enable Text Personalization for this Product
+                    <label htmlFor="enable-checkbox" style={{ fontWeight: 600, fontSize: "15px", cursor: "pointer" }}>
+                      Activate Personalization Block on Storefront
                     </label>
                   </div>
 
                   {enabled && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginTop: "16px" }}>
-                      <div>
-                        <label style={{ display: "block", fontWeight: 600, marginBottom: "6px" }}>Max Characters Allowed</label>
-                        <input
-                          type="number"
-                          value={maxChars}
-                          onChange={(e) => setMaxChars(parseInt(e.target.value) || 0)}
-                          style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                          min="1"
-                        />
-                        <span style={{ fontSize: "12px", color: "#6d7175" }}>Limit the length of engraving or text input.</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+                        <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>Customization Options List</span>
+                        <button
+                          type="button"
+                          onClick={handleAddOption}
+                          style={{
+                            padding: "8px 16px",
+                            background: "#008060",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: "6px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            fontSize: "13px"
+                          }}
+                        >
+                          ➕ Add Option
+                        </button>
                       </div>
 
-                      <div>
-                        <label style={{ display: "block", fontWeight: 600, marginBottom: "6px" }}>Upcharge / Customization Fee ($)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={fee}
-                          onChange={(e) => setFee(parseFloat(e.target.value) || 0.0)}
-                          style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                          min="0"
-                        />
-                        <span style={{ fontSize: "12px", color: "#6d7175" }}>Enter any extra charge associated with this personalization.</span>
-                      </div>
+                      {options.length === 0 ? (
+                        <div style={{ padding: "30px", border: "1px dashed #babfc3", borderRadius: "8px", textAlign: "center", color: "#6d7175" }}>
+                          No options created yet. Click "Add Option" to get started.
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                          {options.map((option, index) => (
+                            <div 
+                              key={option.id} 
+                              style={{ 
+                                border: "1px solid #d2d5d8", 
+                                borderRadius: "10px", 
+                                padding: "16px", 
+                                background: "#ffffff",
+                                boxShadow: "0 2px 5px rgba(0,0,0,0.03)",
+                                position: "relative"
+                              }}
+                            >
+                              {/* Option Header */}
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                                <span style={{ fontWeight: 700, fontSize: "14px", color: "#2c6ecb" }}>Option #{index + 1}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveOption(option.id)}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    color: "#d93838",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    fontSize: "12px"
+                                  }}
+                                >
+                                  🗑️ Delete Option
+                                </button>
+                              </div>
 
-                      <div>
-                        <label style={{ display: "block", fontWeight: 600, marginBottom: "6px" }}>Allowed Fonts (comma separated)</label>
-                        <input
-                          type="text"
-                          value={fonts}
-                          onChange={(e) => setFonts(e.target.value)}
-                          style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                        />
-                        <span style={{ fontSize: "12px", color: "#6d7175" }}>List font options for the customer (e.g. Arial, Georgia, Brush Script MT).</span>
-                      </div>
+                              {/* Form row 1: Label & Type */}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "12px" }}>
+                                <div>
+                                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Option Label / Property Name</label>
+                                  <input
+                                    type="text"
+                                    value={option.label}
+                                    onChange={(e) => handleUpdateOption(option.id, { label: e.target.value })}
+                                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
+                                    placeholder="e.g. Engraving Text"
+                                  />
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Input Type</label>
+                                  <select
+                                    value={option.type}
+                                    onChange={(e) => handleUpdateOption(option.id, { type: e.target.value as any })}
+                                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+                                  >
+                                    <option value="text">Single Line Text</option>
+                                    <option value="select">Dropdown Menu</option>
+                                    <option value="swatch">Color Swatches</option>
+                                    <option value="checkbox">Checkbox Toggle</option>
+                                  </select>
+                                </div>
+                              </div>
 
-                      <div>
-                        <label style={{ display: "block", fontWeight: 600, marginBottom: "6px" }}>Allowed Colors (comma separated Hex values)</label>
-                        <input
-                          type="text"
-                          value={colors}
-                          onChange={(e) => setColors(e.target.value)}
-                          style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                        />
-                        <span style={{ fontSize: "12px", color: "#6d7175" }}>List hexadecimal colors for the preview (e.g. #000000, #FF0000, #00FF00).</span>
-                      </div>
+                              {/* Form row 2: Required & Upcharge */}
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "12px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <input
+                                    type="checkbox"
+                                    id={`required-${option.id}`}
+                                    checked={option.required}
+                                    onChange={(e) => handleUpdateOption(option.id, { required: e.target.checked })}
+                                    style={{ width: "16px", height: "16px", accentColor: "#008060" }}
+                                  />
+                                  <label htmlFor={`required-${option.id}`} style={{ fontWeight: 600, fontSize: "13px", cursor: "pointer" }}>Is this field required?</label>
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Add-on / Upcharge Fee ($)</label>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={option.priceUpcharge}
+                                    onChange={(e) => handleUpdateOption(option.id, { priceUpcharge: parseFloat(e.target.value) || 0 })}
+                                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
+                                    placeholder="0.00"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Form row 3: Type-specific config options */}
+                              {option.type === "text" && (
+                                <div style={{ borderTop: "1px dashed #e1e3e5", paddingTop: "12px" }}>
+                                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Max Characters Limit</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={option.maxChars || 50}
+                                    onChange={(e) => handleUpdateOption(option.id, { maxChars: parseInt(e.target.value) || 50 })}
+                                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
+                                  />
+                                </div>
+                              )}
+
+                              {option.type === "select" && (
+                                <div style={{ borderTop: "1px dashed #e1e3e5", paddingTop: "12px" }}>
+                                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Dropdown Menu Options (comma-separated)</label>
+                                  <input
+                                    type="text"
+                                    value={option.choices || ""}
+                                    onChange={(e) => handleUpdateOption(option.id, { choices: e.target.value })}
+                                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
+                                    placeholder="Option A, Option B, Option C"
+                                  />
+                                </div>
+                              )}
+
+                              {option.type === "swatch" && (
+                                <div style={{ borderTop: "1px dashed #e1e3e5", paddingTop: "12px" }}>
+                                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Color List (comma-separated Hex values)</label>
+                                  <input
+                                    type="text"
+                                    value={option.choices || ""}
+                                    onChange={(e) => handleUpdateOption(option.id, { choices: e.target.value })}
+                                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
+                                    placeholder="#000000, #E63946, #457B9D"
+                                  />
+                                </div>
+                              )}
+
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
                   <div style={{ marginTop: "24px" }}>
                     <s-button onClick={handleSave} variant="primary" {...(fetcher.state === "submitting" ? { loading: true } : {})}>
-                      Save Configuration
+                      Save Dynamic Configuration
                     </s-button>
                   </div>
+
                 </s-stack>
               </s-box>
             )}

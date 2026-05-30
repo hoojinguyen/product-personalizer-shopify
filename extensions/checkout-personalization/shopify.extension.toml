@@ -8,7 +8,7 @@ handle = "product-personalizer-checkout"
 
 [[extensions.targeting]]
 target = "purchase.checkout.cart-line-item.render-after"
-module = "./src/Checkout.tsx"
+module = "./src/Checkout.ts"
 
 [[extensions.metafields]]
 namespace = "app"
