@@ -1,0 +1,17 @@
+api_version = "2025-10"
+
+[[extensions]]
+type = "ui_extension"
+name = "Product Personalizer Checkout"
+handle = "product-personalizer-checkout"
+
+[[extensions.targeting]]
+target = "purchase.checkout.cart-line-item.render-after"
+module = "./src/Checkout.tsx"
+
+[[extensions.metafields]]
+namespace = "app"
+key = "customization_config"
+
+[extensions.capabilities]
+api_access = true

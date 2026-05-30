@@ -1,0 +1,11 @@
+{
+  "name": "product-personalizer-checkout",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@shopify/ui-extensions-react": "latest"
+  },
+  "devDependencies": {
+    "react": "^18.3.1"
+  }
+}
