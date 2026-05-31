@@ -64,3 +64,14 @@ model OrderProcessingLog {
   updatedAt  DateTime @updatedAt
 }
 
+model Asset {
+  id        String   @id @default(uuid())
+  shop      String
+  type      String   // FONT, COLOR, IMAGE, OPTION
+  name      String   // e.g., "Vintage Script", "Leather Colors"
+  value     String   // JSON string storing the actual values: URL for fonts/images, hex list for colors, array for options
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+

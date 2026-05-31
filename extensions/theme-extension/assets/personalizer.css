@@ -351,3 +351,131 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Tabs Presentation Layout Styles */
+.personalizer-tabs-nav {
+  display: flex;
+  gap: 12px;
+  border-bottom: 2px solid hsla(210, 14%, 85%, 0.5);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.personalizer-tabs-nav::-webkit-scrollbar {
+  display: none;
+}
+.personalizer-tab-trigger {
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: hsl(210, 10%, 50%);
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 8px 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.personalizer-tab-trigger.active {
+  color: var(--personalizer-brand-color, hsl(160, 100%, 35%));
+  border-bottom-color: var(--personalizer-brand-color, hsl(160, 100%, 35%));
+}
+
+/* Modal Popup Presentation Layout Styles */
+.personalizer-launcher-btn {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  background-color: var(--personalizer-btn-color, hsl(160, 100%, 35%));
+  color: var(--personalizer-btn-text, hsl(0, 0%, 100%));
+  border: none;
+  border-radius: 12px;
+  padding: 14px 28px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.personalizer-launcher-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+  filter: brightness(1.05);
+}
+.personalizer-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 20, 25, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.personalizer-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+.personalizer-modal-content {
+  width: 90%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background-color: hsl(0, 0%, 100%);
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  padding: 28px;
+  position: relative;
+  transform: scale(0.9) translateY(20px);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-color-scheme: dark) {
+  .personalizer-modal-content {
+    background-color: hsl(210, 20%, 10%);
+    border: 1px solid hsla(210, 14%, 25%, 0.5);
+  }
+}
+.personalizer-modal-overlay.active .personalizer-modal-content {
+  transform: scale(1) translateY(0);
+}
+.personalizer-modal-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-size: 20px;
+  background: none;
+  border: none;
+  color: hsl(210, 10%, 60%);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+}
+
+/* Custom CSS Variables Color Mapping Overrides */
+.personalizer-swatch-btn.active {
+  box-shadow: 0 0 0 3px var(--personalizer-brand-color, hsl(160, 100%, 35%)), 0 2px 8px hsla(0, 0%, 0%, 0.25);
+}
+.personalizer-input:focus, .personalizer-select:focus {
+  border-color: var(--personalizer-brand-color, hsl(160, 100%, 35%));
+  box-shadow: 0 0 0 4px hsla(160, 100%, 35%, 0.15);
+}
+.personalizer-upload-trigger-btn:hover {
+  border-color: var(--personalizer-brand-color, hsl(160, 100%, 35%));
+  background: hsla(160, 100%, 35%, 0.04);
+  color: var(--personalizer-brand-color, hsl(160, 100%, 35%));
+}
+.personalizer-fee-tag {
+  color: var(--personalizer-brand-color, hsl(160, 100%, 35%));
+  background: hsla(160, 100%, 35%, 0.08);
+  border-color: hsla(160, 100%, 35%, 0.15);
+}
+

@@ -30,3 +30,6 @@ pnpm-lock.yaml
 .react-router/
 
 shopify.app.*.toml
+
+.agents
+skills-lock.json

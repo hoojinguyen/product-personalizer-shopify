@@ -24,7 +24,9 @@
        data-shop-domain="{{ shop.permanent_domain }}"
        data-is-demo="{% if is_demo %}true{% else %}false{% endif %}"
        data-config='{{ product.metafields.app.customization_config.value | json }}'
+       style="--personalizer-brand-color: {{ config.brandColor | default: '#008060' }}; --personalizer-btn-color: {{ config.buttonColor | default: '#008060' }}; --personalizer-btn-text: {{ config.buttonTextColor | default: '#ffffff' }};"
   >
+
     
     <!-- Title / Header -->
     <div class="personalizer-header">
