@@ -188,7 +188,7 @@ export default function AssetsDirectory() {
   const fetcher = useFetcher<any>();
   const shopify = useAppBridge();
 
-  const [activeTab, setActiveTab] = useState<"fonts" | "colors" | "options">("fonts");
+  const [activeTab, setActiveTab] = useState<"fonts" | "colors" | "options" | "images">("fonts");
   const [loading, setLoading] = useState(false);
 
   // Forms states
@@ -200,6 +200,11 @@ export default function AssetsDirectory() {
   // Fonts specific
   const [fontFile, setFontFile] = useState<File | null>(null);
 
+  // Clipart specific
+  const [clipartImages, setClipartImages] = useState<Array<{ id: string; name: string; url: string }>>([]);
+  const [newClipartFile, setNewClipartFile] = useState<File | null>(null);
+  const [newClipartName, setNewClipartName] = useState("");
+
   useEffect(() => {
     if (fetcher.data?.success) {
       setLoading(false);
@@ -208,6 +213,9 @@ export default function AssetsDirectory() {
       setAssetName("");
       setAssetValue("");
       setFontFile(null);
+      setNewClipartFile(null);
+      setNewClipartName("");
+      setClipartImages([]);
       shopify.toast.show("Asset directory updated successfully!");
     } else if (fetcher.data?.error) {
       setLoading(false);
@@ -321,16 +329,117 @@ export default function AssetsDirectory() {
     );
   };
 
+  const handleSingleClipartUpload = async (file: File, name: string) => {
+    if (!file || !name.trim()) {
+      shopify.toast.show("Please enter clipart name and choose a file");
+      return;
+    }
+    setLoading(true);
+
+    try {
+      // Step 1: Create staged upload target
+      const uploadForm = new FormData();
+      uploadForm.append("intent", "staged_upload");
+      uploadForm.append("filename", file.name);
+      uploadForm.append("mimeType", file.type || "image/png");
+      uploadForm.append("fileSize", String(file.size));
+
+      const res = await fetch("", {
+        method: "POST",
+        body: uploadForm
+      });
+      const resData = await res.json();
+
+      if (resData.error) {
+        shopify.toast.show(`Staging failed: ${resData.error}`);
+        setLoading(false);
+        return;
+      }
+
+      const target = resData.target;
+
+      // Step 2: Post file buffer to Shopify S3 bucket
+      const s3Form = new FormData();
+      target.parameters.forEach((param: { name: string; value: string }) => {
+        s3Form.append(param.name, param.value);
+      });
+      s3Form.append("file", file);
+
+      const s3Res = await fetch(target.url, {
+        method: "POST",
+        body: s3Form
+      });
+
+      if (!s3Res.ok) {
+        shopify.toast.show("Clipart upload to CDN failed.");
+        setLoading(false);
+        return;
+      }
+
+      // Step 3: Register and poll for URL
+      const regForm = new FormData();
+      regForm.append("intent", "register_file");
+      regForm.append("resourceUrl", target.resourceUrl);
+      regForm.append("filename", file.name);
+
+      const regRes = await fetch("", {
+        method: "POST",
+        body: regForm
+      });
+      const regData = await regRes.json();
+
+      if (regData.error) {
+        shopify.toast.show(`Registry failed: ${regData.error}`);
+        setLoading(false);
+        return;
+      }
+
+      // Add to local clipart images list
+      const newImage = {
+        id: Date.now().toString(),
+        name: name.trim(),
+        url: regData.url
+      };
+
+      const updatedImages = [...clipartImages, newImage];
+      setClipartImages(updatedImages);
+      setAssetValue(JSON.stringify(updatedImages));
+      setNewClipartName("");
+      setNewClipartFile(null);
+      
+      // Reset the file input DOM if it exists
+      const fileInput = document.getElementById("clipart-file-picker") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+
+      shopify.toast.show(`Clipart "${name}" uploaded successfully!`);
+    } catch (e: any) {
+      shopify.toast.show(`Upload error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveClipart = (id: string) => {
+    const updated = clipartImages.filter(img => img.id !== id);
+    setClipartImages(updated);
+    setAssetValue(JSON.stringify(updated));
+  };
+
   const openAdd = () => {
     setEditingAsset(null);
     setAssetName("");
-    setAssetValue(
-      activeTab === "colors"
-        ? "#000000, #FFFFFF, #E63946, #457B9D"
-        : activeTab === "options"
-        ? "Option A, Option B, Option C"
-        : ""
-    );
+    if (activeTab === "images") {
+      setClipartImages([]);
+      setAssetValue("[]");
+    } else {
+      setAssetValue(
+        activeTab === "colors"
+          ? "#000000, #FFFFFF, #E63946, #457B9D"
+          : activeTab === "options"
+          ? "Option A, Option B, Option C"
+          : ""
+      );
+    }
     setShowAddModal(true);
   };
 
@@ -338,6 +447,13 @@ export default function AssetsDirectory() {
     setEditingAsset(asset);
     setAssetName(asset.name);
     setAssetValue(asset.value);
+    if (asset.type === "IMAGES") {
+      try {
+        setClipartImages(JSON.parse(asset.value));
+      } catch (e) {
+        setClipartImages([]);
+      }
+    }
     setShowAddModal(true);
   };
 
@@ -352,7 +468,7 @@ export default function AssetsDirectory() {
 
         {/* Tab Headers */}
         <div style={{ display: "flex", borderBottom: "1px solid #e1e3e5", margin: "16px 0", gap: "20px" }}>
-          {(["fonts", "colors", "options"] as const).map(tab => (
+          {(["fonts", "colors", "options", "images"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => {
@@ -371,7 +487,7 @@ export default function AssetsDirectory() {
                 textTransform: "capitalize"
               }}
             >
-              {tab === "fonts" ? " Fonts Set" : tab === "colors" ? " Reusable Colors" : " Reusable Options"}
+              {tab === "fonts" ? " Fonts Set" : tab === "colors" ? " Reusable Colors" : tab === "images" ? "🖼️ Clipart Sets" : " Reusable Options"}
             </button>
           ))}
         </div>
@@ -391,7 +507,7 @@ export default function AssetsDirectory() {
               fontSize: "14px"
             }}
           >
-            ➕ Add {activeTab === "fonts" ? "Font" : activeTab === "colors" ? "Color Set" : "Option List"}
+            ➕ Add {activeTab === "fonts" ? "Font" : activeTab === "colors" ? "Color Set" : activeTab === "images" ? "Clipart Set" : "Option List"}
           </button>
         </div>
 
@@ -399,10 +515,127 @@ export default function AssetsDirectory() {
         {showAddModal && (
           <div style={{ border: "1px solid #e1e3e5", padding: "20px", borderRadius: "10px", background: "#f9fafb", marginBottom: "20px" }}>
             <h3 style={{ fontSize: "16px", fontWeight: 700, marginBottom: "16px" }}>
-              {editingAsset ? "🔧 Edit" : "➕ Create"} {activeTab === "fonts" ? "Font Set" : activeTab === "colors" ? "Color Set" : "Option List"}
+              {editingAsset ? "🔧 Edit" : "➕ Create"} {activeTab === "fonts" ? "Font Set" : activeTab === "colors" ? "Color Set" : activeTab === "images" ? "Clipart Set" : "Option List"}
             </h3>
 
-            {activeTab === "fonts" && !editingAsset ? (
+            {activeTab === "images" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div>
+                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Clipart Set Name</label>
+                  <input
+                    type="text"
+                    value={assetName}
+                    onChange={(e) => setAssetName(e.target.value)}
+                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+                    placeholder="e.g. Monogram Borders, Sports Decals"
+                    required
+                  />
+                </div>
+
+                {/* Upload sub-form */}
+                <div style={{ background: "#fff", border: "1px solid #e1e3e5", padding: "12px", borderRadius: "8px", marginTop: "8px" }}>
+                  <span style={{ fontWeight: 700, fontSize: "12px", display: "block", marginBottom: "8px", color: "#2c3e50" }}>🖼️ Upload New Clipart Graphic</span>
+                  <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "2px" }}>Graphic Name/Label</label>
+                      <input
+                        type="text"
+                        value={newClipartName}
+                        onChange={(e) => setNewClipartName(e.target.value)}
+                        placeholder="e.g. Golden Frame, Anchor"
+                        style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "2px" }}>Image File</label>
+                      <input
+                        id="clipart-file-picker"
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setNewClipartFile(e.target.files?.[0] || null)}
+                        style={{ width: "100%", fontSize: "12px" }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loading || !newClipartFile || !newClipartName.trim()}
+                      onClick={() => {
+                        if (newClipartFile) {
+                          handleSingleClipartUpload(newClipartFile, newClipartName);
+                        }
+                      }}
+                      style={{
+                        padding: "6px 12px",
+                        background: "#2c3e50",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: "4px",
+                        fontSize: "12px",
+                        cursor: "pointer",
+                        fontWeight: 600
+                      }}
+                    >
+                      {loading ? "Uploading..." : "Upload Clipart"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Grid of uploaded clipart images */}
+                {clipartImages.length > 0 && (
+                  <div style={{ marginTop: "12px" }}>
+                    <label style={{ display: "block", fontWeight: 600, fontSize: "12px", marginBottom: "6px" }}>Uploaded Graphics ({clipartImages.length})</label>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: "8px", maxHeight: "180px", overflowY: "auto", padding: "6px", border: "1px solid #e1e3e5", borderRadius: "6px", background: "#fff" }}>
+                      {clipartImages.map((img) => (
+                        <div key={img.id} style={{ position: "relative", border: "1px solid #e1e3e5", borderRadius: "4px", padding: "4px", textAlign: "center", background: "#fafafa" }}>
+                          <img src={img.url} alt={img.name} style={{ height: "45px", width: "100%", objectFit: "contain" }} />
+                          <div style={{ fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 2px", color: "#2c3e50" }}>{img.name}</div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveClipart(img.id)}
+                            style={{
+                              position: "absolute",
+                              top: "2px",
+                              right: "2px",
+                              background: "rgba(217,56,56,0.9)",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "50%",
+                              width: "14px",
+                              height: "14px",
+                              fontSize: "10px",
+                              lineHeight: "12px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: 0
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                  <button
+                    onClick={handleSave}
+                    disabled={loading || !assetName.trim()}
+                    style={{ padding: "8px 16px", background: "#008060", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                  >
+                    Save Clipart Set
+                  </button>
+                  <button
+                    onClick={() => setShowAddModal(false)}
+                    style={{ padding: "8px 16px", background: "#e1e3e5", color: "#2c3e50", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : activeTab === "fonts" && !editingAsset ? (
               // Font File Upload Form
               <form onSubmit={handleFontUpload} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 <div>
@@ -581,6 +814,38 @@ export default function AssetsDirectory() {
                         </select>
                       </div>
                     )}
+
+                    {asset.type === "IMAGES" && (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", margin: "8px 0" }}>
+                        {(() => {
+                          try {
+                            const imgs = JSON.parse(asset.value);
+                            if (!Array.isArray(imgs) || imgs.length === 0) return <div style={{ fontSize: "11px", color: "#6d7175", fontStyle: "italic" }}>No graphics yet</div>;
+                            return imgs.slice(0, 8).map((img: any) => (
+                              <div
+                                key={img.id}
+                                style={{
+                                  border: "1px solid #e1e3e5",
+                                  borderRadius: "4px",
+                                  padding: "2px",
+                                  textAlign: "center",
+                                  background: "#fdfdfd"
+                                }}
+                              >
+                                <img
+                                  src={img.url}
+                                  alt={img.name}
+                                  style={{ width: "100%", height: "35px", objectFit: "contain" }}
+                                  title={img.name}
+                                />
+                              </div>
+                            ));
+                          } catch (e) {
+                            return <div style={{ fontSize: "11px", color: "#d93838" }}>Error parsing clipart</div>;
+                          }
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   {asset.type !== "FONTS" && (
@@ -589,7 +854,7 @@ export default function AssetsDirectory() {
                         onClick={() => openEdit(asset)}
                         style={{ background: "none", border: "none", color: "#008060", fontWeight: 600, cursor: "pointer", fontSize: "13px" }}
                       >
-                        ✏️ Edit List
+                        ✏️ Edit {asset.type === "IMAGES" ? "Graphics" : "List"}
                       </button>
                     </div>
                   )}

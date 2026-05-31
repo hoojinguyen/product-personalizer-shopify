@@ -185,15 +185,23 @@ interface ConditionalRule {
 
 interface CustomizationOption {
   id: string;
-  type: "text" | "select" | "swatch" | "checkbox" | "file";
+  type: "text" | "select" | "swatch" | "checkbox" | "file" | "clipart";
   label: string;
   required: boolean;
   priceUpcharge: number;
   maxChars?: number;
   choices?: string; // Comma-separated or linked asset Set ID
   choicesType?: "custom" | "global"; // Whether it uses custom list or links to an AssetSet
-  assetSetId?: string; // Links to global colors/options AssetSet
+  assetSetId?: string; // Links to global colors/options/images AssetSet
   conditionalRules?: ConditionalRule[];
+  
+  // Coordinate positioning attributes (Phase 3 parity features)
+  canvasX?: number;
+  canvasY?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  canvasRotation?: number;
+  canvasFontSize?: number;
 }
 
 export default function TemplatesPanel() {
@@ -223,6 +231,7 @@ export default function TemplatesPanel() {
   const fontAssets = assets.filter(a => a.type === "FONTS");
   const colorAssets = assets.filter(a => a.type === "COLORS");
   const optionAssets = assets.filter(a => a.type === "OPTIONS");
+  const clipartAssets = assets.filter(a => a.type === "IMAGES");
 
   // Load selected template configurations
   useEffect(() => {
@@ -267,7 +276,13 @@ export default function TemplatesPanel() {
           label: "Engraving Custom Text",
           required: true,
           priceUpcharge: 0,
-          maxChars: 30
+          maxChars: 30,
+          canvasX: 400,
+          canvasY: 400,
+          canvasFontSize: 48,
+          canvasWidth: 250,
+          canvasHeight: 250,
+          canvasRotation: 0
         }
       ]);
       setLinkedProducts([]);
@@ -289,7 +304,7 @@ export default function TemplatesPanel() {
     });
   }, [fontAssets]);
 
-  // WYSIWYG Canvas Rendering matching ADR 0001
+  // WYSIWYG Coordinate-Aware Multi-Layer Canvas Rendering matching ADR 0001
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -301,28 +316,73 @@ export default function TemplatesPanel() {
 
     cx.clearRect(0, 0, canvas.width, canvas.height);
     // Draw canvas card background
-    cx.fillStyle = "#f4f6f8";
+    cx.fillStyle = "#ffffff";
     cx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw grid bounds for context
-    cx.strokeStyle = "rgba(44,110,203,0.15)";
+    // Draw coordinate bounds for merchant visual alignment
+    cx.strokeStyle = "rgba(0,128,96,0.1)";
     cx.lineWidth = 1;
-    cx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+    cx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
 
-    // Draw title placeholder
+    // Render option layers sequentially
+    options.forEach((opt, idx) => {
+      cx.save();
+      
+      const x = (opt.canvasX ?? 400) / 2;
+      const y = (opt.canvasY ?? 400) / 2;
+      
+      // Translate to this layer's coordinates
+      cx.translate(x, y);
+
+      if (opt.canvasRotation) {
+        cx.rotate((opt.canvasRotation * Math.PI) / 180);
+      }
+
+      if (opt.type === "text") {
+        cx.fillStyle = opt.id === "opt-default-text" ? previewColor : "#1a1a1a";
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        const fontSize = (opt.canvasFontSize ?? 48) / 2;
+        cx.font = `bold ${fontSize}px "${opt.id === "opt-default-text" ? previewFont : "Arial"}", Arial, sans-serif`;
+        cx.fillText(previewText || opt.label || "Custom Text", 0, 0);
+      } else if (opt.type === "clipart") {
+        cx.fillStyle = "rgba(0, 128, 96, 0.08)";
+        cx.strokeStyle = "#008060";
+        cx.lineWidth = 1.5;
+        const w = (opt.canvasWidth ?? 250) / 2;
+        const h = (opt.canvasHeight ?? 250) / 2;
+        cx.fillRect(-w/2, -h/2, w, h);
+        cx.strokeRect(-w/2, -h/2, w, h);
+        
+        cx.fillStyle = "#008060";
+        cx.font = "bold 10px Arial";
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        cx.fillText(`🖼️ Clipart: ${opt.label}`, 0, 0);
+      } else if (opt.type === "file") {
+        cx.fillStyle = "rgba(44, 62, 80, 0.08)";
+        cx.strokeStyle = "#2c3e50";
+        cx.lineWidth = 1.5;
+        const w = (opt.canvasWidth ?? 250) / 2;
+        const h = (opt.canvasHeight ?? 250) / 2;
+        cx.fillRect(-w/2, -h/2, w, h);
+        cx.strokeRect(-w/2, -h/2, w, h);
+        
+        cx.fillStyle = "#2c3e50";
+        cx.font = "bold 10px Arial";
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        cx.fillText(`📸 Upload: ${opt.label}`, 0, 0);
+      }
+      cx.restore();
+    });
+
+    // Draw tiny overlay tag indicating print frame
     cx.fillStyle = "#6d7175";
-    cx.font = "bold 12px Arial, sans-serif";
-    cx.textAlign = "center";
-    cx.fillText("LIVE WYSIWYG PRINT CANVAS", canvas.width / 2, 40);
-
-    // Draw customized layers preview
-    cx.fillStyle = previewColor;
-    cx.textAlign = "center";
-    cx.textBaseline = "middle";
-    // Check if custom uploaded font is ready
-    cx.font = `bold 28px "${previewFont}", Arial, sans-serif`;
-    cx.fillText(previewText || "(Type your text)", canvas.width / 2, canvas.height / 2);
-  }, [previewText, previewFont, previewColor]);
+    cx.font = "bold 9px monospace";
+    cx.textAlign = "right";
+    cx.fillText("400x400 px mockup", canvas.width - 15, canvas.height - 15);
+  }, [previewText, previewFont, previewColor, options]);
 
   useEffect(() => {
     if (fetcher.data?.success) {
@@ -339,7 +399,13 @@ export default function TemplatesPanel() {
         label: "Custom Choice Field",
         required: false,
         priceUpcharge: 0,
-        maxChars: 30
+        maxChars: 30,
+        canvasX: 400,
+        canvasY: 400,
+        canvasFontSize: 48,
+        canvasWidth: 250,
+        canvasHeight: 250,
+        canvasRotation: 0
       }
     ]);
   };
@@ -353,10 +419,28 @@ export default function TemplatesPanel() {
       if (o.id === id) {
         const u = { ...o, ...updates };
         if (updates.type && updates.type !== o.type) {
-          if (u.type === "text") u.maxChars = 30;
-          else if (u.type === "select" || u.type === "swatch") {
+          if (u.type === "text") {
+            u.maxChars = 30;
+            u.canvasX = 400;
+            u.canvasY = 400;
+            u.canvasFontSize = 48;
+          } else if (u.type === "select" || u.type === "swatch") {
             u.choicesType = "custom";
             u.choices = "Option X, Option Y";
+          } else if (u.type === "clipart") {
+            u.choicesType = "global";
+            u.choices = "[]";
+            u.canvasX = 400;
+            u.canvasY = 400;
+            u.canvasWidth = 250;
+            u.canvasHeight = 250;
+            u.canvasRotation = 0;
+          } else if (u.type === "file") {
+            u.canvasX = 400;
+            u.canvasY = 400;
+            u.canvasWidth = 250;
+            u.canvasHeight = 250;
+            u.canvasRotation = 0;
           }
         }
         return u;
@@ -589,29 +673,32 @@ export default function TemplatesPanel() {
                     </div>
 
                     {/* Reusable Choice Set Linking Logic */}
-                    {(opt.type === "select" || opt.type === "swatch") && (
+                    {(opt.type === "select" || opt.type === "swatch" || opt.type === "clipart") && (
                       <div style={{ borderTop: "1px dashed #e1e3e5", marginTop: "8px", paddingTop: "8px" }}>
                         <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "6px" }}>
                           <span style={{ fontSize: "12px", fontWeight: 600 }}>Choices Type:</span>
+                          {opt.type !== "clipart" && (
+                            <label style={{ fontSize: "12px", cursor: "pointer" }}>
+                              <input
+                                type="radio"
+                                name={`choicesType-${opt.id}`}
+                                checked={opt.choicesType !== "global"}
+                                onChange={() => handleUpdateOption(opt.id, { choicesType: "custom" })}
+                              /> Custom List
+                            </label>
+                          )}
                           <label style={{ fontSize: "12px", cursor: "pointer" }}>
                             <input
                               type="radio"
                               name={`choicesType-${opt.id}`}
-                              checked={opt.choicesType !== "global"}
-                              onChange={() => handleUpdateOption(opt.id, { choicesType: "custom" })}
-                            /> Custom List
-                          </label>
-                          <label style={{ fontSize: "12px", cursor: "pointer" }}>
-                            <input
-                              type="radio"
-                              name={`choicesType-${opt.id}`}
-                              checked={opt.choicesType === "global"}
+                              checked={opt.type === "clipart" || opt.choicesType === "global"}
                               onChange={() => handleUpdateOption(opt.id, { choicesType: "global" })}
+                              disabled={opt.type === "clipart"}
                             /> Link Reusable Set
                           </label>
                         </div>
 
-                        {opt.choicesType === "global" ? (
+                        {opt.type === "clipart" || opt.choicesType === "global" ? (
                           <div>
                             <label style={{ display: "block", fontSize: "11px", color: "#6d7175", marginBottom: "2px" }}>Select Linked Brand Asset Set</label>
                             <select
@@ -625,6 +712,8 @@ export default function TemplatesPanel() {
                               <option value="">Choose Asset List...</option>
                               {opt.type === "swatch"
                                 ? colorAssets.map(c => <option key={c.id} value={c.id}> {c.name}</option>)
+                                : opt.type === "clipart"
+                                ? clipartAssets.map(i => <option key={i.id} value={i.id}>🖼️ {i.name}</option>)
                                 : optionAssets.map(o => <option key={o.id} value={o.id}> {o.name}</option>)
                               }
                             </select>
@@ -641,6 +730,76 @@ export default function TemplatesPanel() {
                             />
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Visual Positioning Settings (Phase 3/4 Parity) */}
+                    {(opt.type === "text" || opt.type === "clipart" || opt.type === "file") && (
+                      <div style={{ borderTop: "1px dashed #e1e3e5", marginTop: "12px", paddingTop: "8px" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#2c3e50", display: "block", marginBottom: "6px" }}>🎯 Visual Canvas Positioning</span>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px" }}>
+                          <div>
+                            <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Center X (px)</label>
+                            <input
+                              type="number"
+                              value={opt.canvasX ?? 400}
+                              onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
+                              style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Center Y (px)</label>
+                            <input
+                              type="number"
+                              value={opt.canvasY ?? 400}
+                              onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
+                              style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                            />
+                          </div>
+                          {(opt.type === "clipart" || opt.type === "file") ? (
+                            <>
+                              <div>
+                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Width (px)</label>
+                                <input
+                                  type="number"
+                                  value={opt.canvasWidth ?? 250}
+                                  onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
+                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Height (px)</label>
+                                <input
+                                  type="number"
+                                  value={opt.canvasHeight ?? 250}
+                                  onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
+                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                                />
+                              </div>
+                            </>
+                          ) : opt.type === "text" ? (
+                            <>
+                              <div>
+                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Font Size (px)</label>
+                                <input
+                                  type="number"
+                                  value={opt.canvasFontSize ?? 48}
+                                  onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
+                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                                />
+                              </div>
+                              <div>
+                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Rotate (deg)</label>
+                                <input
+                                  type="number"
+                                  value={opt.canvasRotation ?? 0}
+                                  onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
+                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                                />
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                     )}
                   </div>
