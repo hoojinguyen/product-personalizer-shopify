@@ -1,0 +1,47 @@
+{
+  "payload": {
+    "export": "cart-transform-run",
+    "target": "cart.transform.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 1,
+            "cost": {
+              "amountPerQuantity": {
+                "amount": "50.00",
+                "currencyCode": "USD"
+              }
+            },
+            "upchargeAmount": {
+              "value": "5.00"
+            },
+            "previewUrl": {
+              "value": "https://cdn.shopify.com/custom-preview.png"
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "lineUpdate": {
+            "cartLineId": "gid://shopify/CartLine/1",
+            "price": {
+              "adjustment": {
+                "fixedPricePerUnit": {
+                  "amount": "55.00"
+                }
+              }
+            },
+            "image": {
+              "url": "https://cdn.shopify.com/custom-preview.png"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

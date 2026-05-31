@@ -32,13 +32,13 @@ _Avoid_: Order ZIP, manufacturing file package, download package
 The visual presentation format of the storefront customizer, which can be inline stacked, tabbed, or a modal overlay.
 _Avoid_: Theme block, visual layout, block type
 
-**Upcharge Item**:
-A hidden Shopify product variant priced at $1.00 added to the cart in multiples to represent the customization fee.
-_Avoid_: Fee variant, personalization cost product
+**Upcharge Component**:
+The additional fee associated with personalization choices, dynamically bundled and pricing-adjusted directly inside the main cart line item using Shopify's Cart Transform API.
+_Avoid_: Upcharge Item, fee variant, stacked variant
 
-**Cart Sync**:
-The real-time coordination of quantities between a personalized product and its associated Upcharge Item in the shopping cart.
-_Avoid_: Cart listener, item linkage
+**Cart Transform Sync**:
+The automatic Shopify Function-driven merging of customizer choices and dynamic fees directly into the main checkout product without auxiliary items.
+_Avoid_: Cart Sync, cart listener, item linkage
 
 
 

@@ -10,6 +10,6 @@ We will use a Unified Canvas Rendering model. A shared rendering utility module 
 
 * The admin template editor renders this layout in a React wrapper.
 * The storefront customizer renders it dynamically in a vanilla HTML5 canvas.
-* The order processing webhook runs the same rendering routine headlessly on the server to output a high-resolution, print-ready file.
+* The order processing webhook compiles a headless vector SVG generator routine (converting choices, typography, overlays, and coordinates into infinitely scalable XML vectors) to output a high-resolution, print-ready file.
 
 This establishes absolute parity between what the customer sees and what the merchant manufactures.
