@@ -32,3 +32,35 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  shop      String
+  enabled   Boolean  @default(true)
+  options   String   // JSON string of options and rules
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UpchargeMapping {
+  id         String   @id @default(uuid())
+  shop       String
+  price      Float    // Price of this upcharge
+  productId  String   // Shopify Product ID for the hidden upcharge product
+  variantId  String   // Shopify Variant ID for the hidden upcharge variant
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model OrderProcessingLog {
+  id         String   @id @default(uuid())
+  shop       String
+  orderId    String
+  status     String   // PENDING, COMPLETED, FAILED
+  error      String?
+  printFileUrl String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+

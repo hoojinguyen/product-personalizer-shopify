@@ -18,7 +18,13 @@
 {%- endif -%}
 
 {%- if enabled -%}
-  <div class="personalizer-card" data-product-id="{{ product.id }}">
+  <div class="personalizer-card" 
+       data-product-id="{{ product.id }}"
+       data-base-image="{{ product.featured_image | image_url: width: 800 }}"
+       data-shop-domain="{{ shop.permanent_domain }}"
+       data-is-demo="{% if is_demo %}true{% else %}false{% endif %}"
+       data-config='{{ product.metafields.app.customization_config.value | json }}'
+  >
     
     <!-- Title / Header -->
     <div class="personalizer-header">
@@ -26,11 +32,14 @@
       <h4 class="personalizer-title">{{ block.settings.heading }}</h4>
     </div>
 
+    <!-- Hidden form property to hold checkout preview thumbnail -->
+    <input type="hidden" name="properties[_preview_url]" id="personalizer-hidden-preview-url" value="" form="product-form-{{ section.id }}">
+
     {%- if is_demo -%}
       {%- comment -%} ==================== DEMO MODE FOR THEME EDITOR ==================== {%- endcomment -%}
       
       <!-- Demo Input 1: Text -->
-      <div class="personalizer-group" data-option-type="text">
+      <div class="personalizer-group" data-option-type="text" data-option-id="demo-text">
         <label class="personalizer-label" for="demo-field-text">
           <span style="display: flex; align-items: center; gap: 8px;">
             Custom Engraving Text <span style="color: hsl(354, 85%, 45%);">*</span>
@@ -53,7 +62,7 @@
       </div>
 
       <!-- Demo Input 2: Select Font -->
-      <div class="personalizer-group" data-option-type="select">
+      <div class="personalizer-group" data-option-type="select" data-option-id="demo-font">
         <label class="personalizer-label" for="demo-field-font">
           <span>Font Style</span>
         </label>
@@ -70,7 +79,7 @@
       </div>
 
       <!-- Demo Input 3: Swatches -->
-      <div class="personalizer-group" data-option-type="swatch">
+      <div class="personalizer-group" data-option-type="swatch" data-option-id="demo-swatch">
         <label class="personalizer-label">
           <span>Engraving Color</span>
         </label>
@@ -89,8 +98,38 @@
         </div>
       </div>
 
-      <!-- Demo Input 4: Checkbox -->
-      <div class="personalizer-group" data-option-type="checkbox">
+      <!-- Demo Input 4: File Upload -->
+      <div class="personalizer-group" data-option-type="file" data-option-id="demo-upload">
+        <label class="personalizer-label" for="demo-field-file">
+          <span>Add Custom Logo Overlay</span>
+          <span class="personalizer-fee-tag">+$10.00</span>
+        </label>
+        <div class="personalizer-file-upload-wrapper">
+          <input 
+            type="file" 
+            id="demo-field-file"
+            class="personalizer-file-input"
+            accept="image/*"
+            style="display: none;"
+          >
+          <button type="button" class="personalizer-upload-trigger-btn" onclick="document.getElementById('demo-field-file').click()">
+            📸 Upload Custom Logo
+          </button>
+          <div class="personalizer-file-preview-name" style="margin-top: 6px; font-size: 12px; color: #6d7175; font-style: italic;">
+            No image selected
+          </div>
+          <input 
+            type="hidden" 
+            id="demo-field-file-url"
+            class="personalizer-input-file-url"
+            name="properties[Custom Logo Overlay]"
+            value=""
+          >
+        </div>
+      </div>
+
+      <!-- Demo Input 5: Checkbox -->
+      <div class="personalizer-group" data-option-type="checkbox" data-option-id="demo-gift">
         <label class="personalizer-label" for="demo-field-gift">
           <span>Add Premium Gift Box</span>
           <span class="personalizer-fee-tag">+$2.50</span>
@@ -115,7 +154,7 @@
       
       <!-- Dynamic Options Loop -->
       {%- for option in options -%}
-        <div class="personalizer-group" data-option-type="{{ option.type }}">
+        <div class="personalizer-group" data-option-type="{{ option.type }}" data-option-id="{{ option.id }}">
           
           <!-- Label with Upcharge fee badge -->
           <label class="personalizer-label" for="field-{{ option.id }}">
@@ -125,7 +164,7 @@
             </span>
             <span style="display: flex; align-items: center; gap: 6px;">
               {%- if option.priceUpcharge > 0 -%}
-                <span class="personalizer-fee-tag">+{{ option.priceUpcharge | times: 100 | money }}</span>
+                <span class="personalizer-fee-tag" data-upcharge-amount="{{ option.priceUpcharge }}">+{{ option.priceUpcharge | times: 100 | money }}</span>
               {%- endif -%}
               {%- if option.type == 'text' -%}
                 <span class="personalizer-char-count" data-counter-for="field-{{ option.id }}">0/{{ option.maxChars | default: 50 }}</span>
@@ -189,6 +228,32 @@
                 {%- endfor -%}
               </div>
 
+            {%- when 'file' -%}
+              <div class="personalizer-file-upload-wrapper">
+                <input 
+                  type="file" 
+                  id="field-{{ option.id }}"
+                  class="personalizer-file-input"
+                  accept="image/*"
+                  style="display: none;"
+                >
+                <button type="button" class="personalizer-upload-trigger-btn" onclick="document.getElementById('field-{{ option.id }}').click()">
+                  📸 Upload Image Asset
+                </button>
+                <div class="personalizer-file-preview-name" style="margin-top: 6px; font-size: 12px; color: #6d7175; font-style: italic;">
+                  No image selected
+                </div>
+                <!-- Hidden input representing the resolved public CDN URL of the uploaded image to submit in the cart -->
+                <input 
+                  type="hidden" 
+                  id="field-{{ option.id }}-url"
+                  class="personalizer-input-file-url"
+                  name="properties[{{ option.label }}]"
+                  value=""
+                  {% if option.required %}required{% endif %}
+                >
+              </div>
+
             {%- when 'checkbox' -%}
               <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
                 <input 
@@ -211,13 +276,15 @@
       {%- endfor -%}
     {%- endif -%}
 
-    <!-- Premium Real-time Live Preview -->
-    <div class="personalizer-group" style="margin-top: 10px;">
-      <label class="personalizer-label">Engraving Live Preview</label>
-      <div class="personalizer-preview-box">
-        <div class="personalizer-preview-placeholder">Live engraving preview will appear here...</div>
-        <div class="personalizer-preview-text" style="display: none;"></div>
-        <div class="personalizer-preview-badge" style="display: none;"></div>
+    <!-- Premium Interactive HTML5 Live Preview Canvas -->
+    <div class="personalizer-group" style="margin-top: 16px;">
+      <label class="personalizer-label">Engraving / Customization Live Preview</label>
+      <div class="personalizer-canvas-container">
+        <canvas id="personalizer-canvas"></canvas>
+        <div id="personalizer-canvas-loader">
+          <div class="personalizer-spinner"></div>
+          <span>Uploading custom graphics...</span>
+        </div>
       </div>
     </div>
 

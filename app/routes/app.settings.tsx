@@ -73,6 +73,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const productId = formData.get("productId") as string;
   const enabled = formData.get("enabled") === "true";
   const optionsJson = formData.get("options") as string;
+  const upchargeVariantId = formData.get("upchargeVariantId") as string;
 
   let options = [];
   try {
@@ -83,7 +84,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const config = {
     enabled,
-    options
+    options,
+    upchargeVariantId: upchargeVariantId || ""
   };
 
   const response = await admin.graphql(
@@ -119,15 +121,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { ok: true, errors: responseJson.data?.metafieldsSet?.userErrors || [] };
 };
 
+interface ConditionalRule {
+  fieldId: string;
+  operator: "equals" | "not_equals" | "checked" | "unchecked";
+  value: string;
+}
+
 interface CustomizationOption {
   id: string;
-  type: "text" | "select" | "swatch" | "checkbox";
+  type: "text" | "select" | "swatch" | "checkbox" | "file";
   label: string;
   required: boolean;
   priceUpcharge: number;
   maxChars?: number; // For type === "text"
   choices?: string; // For type === "select" or "swatch", comma-separated list
+  conditionalRules?: ConditionalRule[];
 }
+
 
 export default function Settings() {
   const { products } = useLoaderData<typeof loader>();
@@ -137,6 +147,7 @@ export default function Settings() {
   const [selectedProduct, setSelectedProduct] = useState<any>(products[0] || null);
   const [enabled, setEnabled] = useState(false);
   const [options, setOptions] = useState<CustomizationOption[]>([]);
+  const [upchargeVariantId, setUpchargeVariantId] = useState("");
 
   useEffect(() => {
     if (selectedProduct) {
@@ -149,6 +160,7 @@ export default function Settings() {
             // New schema format
             setOptions(config.options);
             setEnabled(config.enabled ?? false);
+            setUpchargeVariantId(config.upchargeVariantId || "");
           } else {
             // Self-healing layer: Auto-migrate old static schema into dynamic options schema
             const migrated: CustomizationOption[] = [];
@@ -184,15 +196,18 @@ export default function Settings() {
             }
             setOptions(migrated);
             setEnabled(config.enabled ?? false);
+            setUpchargeVariantId("");
           }
         } catch (e) {
           console.error("Error parsing product config, using default", e);
           setOptions([]);
           setEnabled(false);
+          setUpchargeVariantId("");
         }
       } else {
         // Reset defaults for clean product
         setEnabled(false);
+        setUpchargeVariantId("");
         setOptions([
           {
             id: "opt-default-text",
@@ -220,7 +235,8 @@ export default function Settings() {
       label: "New Option Label",
       required: false,
       priceUpcharge: 0.0,
-      maxChars: 50
+      maxChars: 50,
+      conditionalRules: []
     };
     setOptions([...options, newOption]);
   };
@@ -247,6 +263,9 @@ export default function Settings() {
           } else if (updates.type === "checkbox") {
             delete updated.maxChars;
             delete updated.choices;
+          } else if (updates.type === "file") {
+            delete updated.maxChars;
+            delete updated.choices;
           }
         }
         return updated;
@@ -261,7 +280,8 @@ export default function Settings() {
       {
         productId: selectedProduct.id,
         enabled: String(enabled),
-        options: JSON.stringify(options)
+        options: JSON.stringify(options),
+        upchargeVariantId: upchargeVariantId
       },
       { method: "POST" }
     );
@@ -339,7 +359,6 @@ export default function Settings() {
                   </div>
 
                   <hr style={{ border: 0, borderTop: "1px solid #e1e3e5", margin: "8px 0" }} />
-
                   {/* Enable Switch */}
                   <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
                     <input
@@ -352,6 +371,23 @@ export default function Settings() {
                     <label htmlFor="enable-checkbox" style={{ fontWeight: 600, fontSize: "15px", cursor: "pointer" }}>
                       Activate Personalization Block on Storefront
                     </label>
+                  </div>
+
+                  {/* Global $1.00 Upcharge GID mapping */}
+                  <div style={{ background: "#f9fafb", padding: "16px", borderRadius: "8px", border: "1px solid #e1e3e5" }}>
+                    <label style={{ display: "block", fontWeight: 600, fontSize: "14px", marginBottom: "6px" }}>
+                      Global $1.00 Upcharge Product Variant ID (Shopify GID)
+                    </label>
+                    <input
+                      type="text"
+                      value={upchargeVariantId}
+                      onChange={(e) => setUpchargeVariantId(e.target.value)}
+                      placeholder="e.g. gid://shopify/ProductVariant/47852369145625"
+                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#ffffff" }}
+                    />
+                    <small style={{ display: "block", marginTop: "4px", color: "#6d7175", fontSize: "11px" }}>
+                      To charge extra fees, create a hidden product priced at $1.00, and enter its Variant GID here. Our AJAX storefront engine adds this item automatically in multiples to bundle the correct personalization upcharge.
+                    </small>
                   </div>
 
                   {enabled && (
@@ -435,6 +471,7 @@ export default function Settings() {
                                     <option value="text">Single Line Text</option>
                                     <option value="select">Dropdown Menu</option>
                                     <option value="swatch">Color Swatches</option>
+                                    <option value="file">Buyer Image Upload</option>
                                     <option value="checkbox">Checkbox Toggle</option>
                                   </select>
                                 </div>
@@ -505,6 +542,103 @@ export default function Settings() {
                                   />
                                 </div>
                               )}
+
+                              {/* Conditional Logic Section */}
+                              <div style={{ borderTop: "1px dashed #e1e3e5", marginTop: "16px", paddingTop: "12px" }}>
+                                <span style={{ fontWeight: 700, fontSize: "13px", display: "block", marginBottom: "8px", color: "#2c6ecb" }}>
+                                  Conditional Logic Rules (Only show if...)
+                                </span>
+                                
+                                {(!option.conditionalRules || option.conditionalRules.length === 0) ? (
+                                  <div style={{ fontSize: "12px", color: "#6d7175", fontStyle: "italic", marginBottom: "8px" }}>
+                                    No rules configured. This option is always visible.
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                                    {option.conditionalRules.map((rule, ruleIdx) => (
+                                      <div key={ruleIdx} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1.5fr auto", gap: "8px", alignItems: "center", background: "#f9fafb", padding: "8px", borderRadius: "6px" }}>
+                                        {/* Parent Option Selector */}
+                                        <select
+                                          value={rule.fieldId}
+                                          onChange={(e) => {
+                                            const updatedRules = [...(option.conditionalRules || [])];
+                                            updatedRules[ruleIdx].fieldId = e.target.value;
+                                            handleUpdateOption(option.id, { conditionalRules: updatedRules });
+                                          }}
+                                          style={{ padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", fontSize: "12px", background: "#fff" }}
+                                        >
+                                          <option value="">Select Option...</option>
+                                          {options.filter(o => o.id !== option.id).map(o => (
+                                            <option key={o.id} value={o.id}>{o.label}</option>
+                                          ))}
+                                        </select>
+
+                                        {/* Operator Selector */}
+                                        <select
+                                          value={rule.operator}
+                                          onChange={(e) => {
+                                            const updatedRules = [...(option.conditionalRules || [])];
+                                            updatedRules[ruleIdx].operator = e.target.value as any;
+                                            handleUpdateOption(option.id, { conditionalRules: updatedRules });
+                                          }}
+                                          style={{ padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", fontSize: "12px", background: "#fff" }}
+                                        >
+                                          <option value="equals">Equals</option>
+                                          <option value="not_equals">Not Equals</option>
+                                          <option value="checked">Checked</option>
+                                          <option value="unchecked">Unchecked</option>
+                                        </select>
+
+                                        {/* Value Match */}
+                                        <input
+                                          type="text"
+                                          value={rule.value}
+                                          onChange={(e) => {
+                                            const updatedRules = [...(option.conditionalRules || [])];
+                                            updatedRules[ruleIdx].value = e.target.value;
+                                            handleUpdateOption(option.id, { conditionalRules: updatedRules });
+                                          }}
+                                          placeholder="Value to match"
+                                          disabled={rule.operator === "checked" || rule.operator === "unchecked"}
+                                          style={{ padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", fontSize: "12px" }}
+                                        />
+
+                                        {/* Delete Rule */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updatedRules = (option.conditionalRules || []).filter((_, idx) => idx !== ruleIdx);
+                                            handleUpdateOption(option.id, { conditionalRules: updatedRules });
+                                          }}
+                                          style={{ background: "none", border: "none", color: "#d93838", cursor: "pointer", fontSize: "12px" }}
+                                        >
+                                          ❌
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updatedRules = [...(option.conditionalRules || []), { fieldId: "", operator: "equals" as const, value: "" }];
+                                    handleUpdateOption(option.id, { conditionalRules: updatedRules });
+                                  }}
+                                  style={{
+                                    padding: "4px 8px",
+                                    border: "1px dashed #2c6ecb",
+                                    borderRadius: "4px",
+                                    color: "#2c6ecb",
+                                    background: "#ffffff",
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    cursor: "pointer"
+                                  }}
+                                >
+                                  ➕ Add Conditional Rule
+                                </button>
+                              </div>
 
                             </div>
                           ))}
