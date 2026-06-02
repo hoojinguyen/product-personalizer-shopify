@@ -10,7 +10,7 @@
   {%- assign is_demo = false -%}
 {%- elsif request.design_mode -%}
   {%- comment -%} Theme Editor preview fallback {%- endcomment -%}
-  {%- assign enabled = true -  %}
+  {%- assign enabled = true -%}
   {%- assign is_demo = true -%}
 {%- else -%}
   {%- assign enabled = false -%}
@@ -25,6 +25,9 @@
        data-is-demo="{% if is_demo %}true{% else %}false{% endif %}"
        data-config='{{ product.metafields.app.customization_config.value | json }}'
   ></div>
+  
+  <!-- Bypassing Shopify CLI 10KB schema limit: Loading standard asset dynamically & deferred -->
+  <script src="{{ 'product-personalizer.js' | asset_url }}" defer="defer"></script>
 {%- endif -%}
 
 {% schema %}
@@ -32,7 +35,6 @@
   "name": "Product Personalization",
   "target": "section",
   "stylesheet": "personalizer.css",
-  "javascript": "product-personalizer.js",
   "settings": [
     {
       "type": "text",
