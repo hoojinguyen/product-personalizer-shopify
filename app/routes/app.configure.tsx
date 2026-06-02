@@ -70,7 +70,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { shop }
   });
 
-  return { products, assets };
+  return { products, assets, shop };
 };
 
 // Action: Save customization configuration
@@ -163,7 +163,7 @@ interface CustomizationOption {
 }
 
 export default function ConfigureProductOptions() {
-  const { products: initialProducts, assets } = useLoaderData<typeof loader>();
+  const { products: initialProducts, assets, shop } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
@@ -179,6 +179,8 @@ export default function ConfigureProductOptions() {
   
   // Canvas Alignment and Drag States
   const [showGrid, setShowGrid] = useState(true);
+  const [livePreview, setLivePreview] = useState(false);
+  const [mockupView, setMockupView] = useState("Front Mockup View");
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
@@ -756,18 +758,49 @@ export default function ConfigureProductOptions() {
     canvas.height = 400;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw background image
-    if (bgImage) {
-      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "rgba(255, 255, 255, 0.35)"; // contrast screen
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
+     // Draw background image
+     if (bgImage) {
+       ctx.save();
+       if (mockupView === "Back Mockup View") {
+         // Horizontally flip the background image to simulate the back side of the product
+         ctx.translate(canvas.width, 0);
+         ctx.scale(-1, 1);
+         ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+       } else if (mockupView === "Engraving Close-Up") {
+         // Zoom in to simulate the engraving details view
+         ctx.drawImage(bgImage, -50, -50, canvas.width + 100, canvas.height + 100);
+       } else {
+         ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+       }
+       ctx.restore();
+ 
+       ctx.fillStyle = "rgba(255, 255, 255, 0.35)"; // contrast screen
+       ctx.fillRect(0, 0, canvas.width, canvas.height);
+ 
+       if (mockupView === "Back Mockup View") {
+         ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+         ctx.fillRect(10, 10, 80, 20);
+         ctx.fillStyle = "#ffffff";
+         ctx.font = "bold 9px Arial";
+         ctx.textAlign = "center";
+         ctx.textBaseline = "middle";
+         ctx.fillText("BACK VIEW", 50, 20);
+       } else if (mockupView === "Engraving Close-Up") {
+         ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+         ctx.fillRect(10, 10, 80, 20);
+         ctx.fillStyle = "#ffffff";
+         ctx.font = "bold 9px Arial";
+         ctx.textAlign = "center";
+         ctx.textBaseline = "middle";
+         ctx.fillText("ZOOM VIEW", 50, 20);
+       }
+     } else {
+       ctx.fillStyle = "#ffffff";
+       ctx.fillRect(0, 0, canvas.width, canvas.height);
+     }
 
     // Grid lines drawer
-    if (showGrid) {
+    if (showGrid && !livePreview) {
       ctx.strokeStyle = "rgba(0, 128, 96, 0.08)";
       ctx.lineWidth = 0.5;
       for (let x = 40; x < canvas.width; x += 40) {
@@ -811,9 +844,13 @@ export default function ConfigureProductOptions() {
       }
 
       // Link Swatch Option values to Text layer formatting
-      const swatchOption = options.find(o => o.type === "swatch");
+      const swatchOption = options.find(o => o.type === "swatch" && shopperValues[o.id]);
       if (swatchOption && shopperValues[swatchOption.id]) {
         activeColor = shopperValues[swatchOption.id];
+      } else if (shopperValues[`${opt.id}_color`]) {
+        activeColor = shopperValues[`${opt.id}_color`];
+      } else if (opt.choices) {
+        activeColor = opt.choices.split(",")[0]?.trim() || "#000000";
       }
 
       if (opt.type === "text" || opt.type === "textarea") {
@@ -869,7 +906,7 @@ export default function ConfigureProductOptions() {
       const isSelected = opt.id === activeLayerId;
       const isHovered = opt.id === hoveredOptionId;
 
-      if (isSelected || isHovered) {
+      if (!livePreview && (isSelected || isHovered)) {
         ctx.strokeStyle = isSelected ? "#008060" : "rgba(16, 185, 129, 0.6)";
         ctx.lineWidth = isSelected ? 2 : 1;
         ctx.setLineDash(isSelected ? [4, 4] : [2, 2]);
@@ -914,7 +951,7 @@ export default function ConfigureProductOptions() {
       ctx.restore();
     });
 
-  }, [options, bgImage, showGrid, activeLayerId, hoveredOptionId, shopperValues]);
+  }, [options, bgImage, showGrid, livePreview, activeLayerId, hoveredOptionId, shopperValues]);
 
   // Saving all personalized settings configuration
   const handleSaveConfiguration = () => {
@@ -1167,6 +1204,7 @@ export default function ConfigureProductOptions() {
           flex: 1;
         }
         .search-input {
+          box-sizing: border-box;
           width: 100%;
           padding: 8px 12px 8px 36px;
           border: 1px solid #babfc3;
@@ -1296,6 +1334,9 @@ export default function ConfigureProductOptions() {
         .status-toggle input:checked + .status-slider:before {
           transform: translateX(20px);
         }
+        .status-toggle input:disabled + .status-slider:before {
+          opacity: 0;
+        }
         
         .spinner-overlay {
           position: absolute;
@@ -1357,6 +1398,72 @@ export default function ConfigureProductOptions() {
           overflow: hidden;
           animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
         }
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid #e1e3e5;
+          background: #ffffff;
+        }
+        .modal-header h3 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 600;
+          color: #202223;
+        }
+        .modal-close {
+          background: none;
+          border: none;
+          font-size: 20px;
+          cursor: pointer;
+          color: #6d7175;
+          padding: 4px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          transition: background-color 0.15s;
+        }
+        .modal-close:hover {
+          background-color: #f1f2f4;
+          color: #202223;
+        }
+        .modal-body {
+          padding: 20px;
+          overflow-y: auto;
+          flex: 1;
+        }
+        .modal-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-top: 1px solid #e1e3e5;
+          background: #f6f6f7;
+        }
+        .accordion-item {
+          border-bottom: 1px solid #e1e3e5;
+        }
+        .accordion-item:last-child {
+          border-bottom: none;
+        }
+        
+        @keyframes slideDown {
+          from {
+            transform: translateY(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        
         
         /* Three-Column Fullscreen Visual Customizer Overlay */
         .editor-fullscreen {
@@ -1391,6 +1498,7 @@ export default function ConfigureProductOptions() {
           display: flex;
           flex-direction: column;
           position: relative;
+          overflow: hidden;
         }
         
         .center-panel {
@@ -1686,7 +1794,7 @@ export default function ConfigureProductOptions() {
                             {product.title}
                           </span>
                           <a
-                            href={`https://africazones-store.myshopify.com/products/${product.handle}`}
+                            href={`https://${shop || 'africazones-store.myshopify.com'}/products/${product.handle}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             title="View live Shopify storefront product page"
@@ -1926,10 +2034,18 @@ export default function ConfigureProductOptions() {
                 <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: "#6d7175", display: "block", marginBottom: "6px" }}>
                   Active Mockup View
                 </span>
-                <select className="filter-select" style={{ width: "100%" }}>
-                  <option>Front Mockup View</option>
-                  <option>Back Mockup View</option>
-                  <option>Engraving Close-Up</option>
+                <select
+                  className="filter-select"
+                  style={{ width: "100%" }}
+                  value={mockupView}
+                  onChange={(e) => {
+                    setMockupView(e.target.value);
+                    shopify.toast.show(`Mockup view changed to: ${e.target.value}`);
+                  }}
+                >
+                  <option value="Front Mockup View">Front Mockup View</option>
+                  <option value="Back Mockup View">Back Mockup View</option>
+                  <option value="Engraving Close-Up">Engraving Close-Up</option>
                 </select>
               </div>
 
@@ -2082,13 +2198,14 @@ export default function ConfigureProductOptions() {
               {/* ==========================================
                   4. FLYOUT DETAILS CONFIGURATION PANEL
                   ========================================== */}
-              {activeFlyoutId && (
-                (() => {
+              {/* Flyout details panel always in DOM to support CSS transitions */}
+              <div className={`flyout-panel ${activeFlyoutId ? "active" : ""}`}>
+                {(() => {
                   const opt = options.find(o => o.id === activeFlyoutId);
                   if (!opt) return null;
 
                   return (
-                    <div className={`flyout-panel ${activeFlyoutId ? "active" : ""}`}>
+                    <>
                       <div style={{ padding: "16px", borderBottom: "1px solid #e1e3e5", display: "flex", alignItems: "center", gap: "12px", background: "#f9fafb" }}>
                         <button
                           className="btn-secondary"
@@ -2215,7 +2332,7 @@ export default function ConfigureProductOptions() {
                         )}
 
                         {/* Accordion 3: Colors & Swatches */}
-                        {(opt.type === "swatch") && (
+                        {(opt.type === "swatch" || opt.type === "text" || opt.type === "textarea") && (
                           <div className="accordion-item">
                             <div className="accordion-header" onClick={() => setActiveAccordion("colors")}>
                               <span>🔻 Colors & Swatches</span>
@@ -2354,10 +2471,10 @@ export default function ConfigureProductOptions() {
                         </div>
 
                       </div>
-                    </div>
+                    </>
                   );
-                })()
-              )}
+                })()}
+              </div>
 
             </div>
 
@@ -2388,8 +2505,22 @@ export default function ConfigureProductOptions() {
                 
                 <span style={{ color: "#e1e3e5" }}>|</span>
                 
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 600 }}>Live Preview</span>
+                  <label className="status-toggle" style={{ transform: "scale(0.8)", margin: "0 -4px" }}>
+                    <input
+                      type="checkbox"
+                      checked={livePreview}
+                      onChange={(e) => setLivePreview(e.target.checked)}
+                    />
+                    <span className="status-slider" />
+                  </label>
+                </div>
+                
+                <span style={{ color: "#e1e3e5" }}>|</span>
+                
                 <span style={{ fontSize: "12px", color: "#6d7175" }}>
-                  Status: <strong style={{ color: "#008060" }}>Edit Mode</strong>
+                  Status: <strong style={{ color: livePreview ? "#008060" : "#202223" }}>{livePreview ? "Live Preview" : "Edit Mode"}</strong>
                 </span>
               </div>
 
@@ -2457,7 +2588,7 @@ export default function ConfigureProductOptions() {
                             maxLength={opt.maxChars}
                             placeholder={opt.placeholder || "Enter engraving text..."}
                             className="search-input"
-                            style={{ padding: "8px 12px" }}
+                            style={{ padding: "8px 12px", marginBottom: opt.allowShopperColor && opt.choices ? "8px" : "0" }}
                             value={shopperValues[opt.id] || ""}
                             onChange={(e) => handleShopperValueChange(opt.id, e.target.value)}
                           />
@@ -2466,19 +2597,59 @@ export default function ConfigureProductOptions() {
                               {opt.maxChars - String(shopperValues[opt.id] || "").length} characters left
                             </span>
                           )}
+
+                          {opt.allowShopperColor && opt.choices && (
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "10px", alignItems: "center" }}>
+                              <span style={{ fontSize: "11px", color: "#6d7175" }}>Text Color:</span>
+                              {opt.choices.split(",").map(colorHex => {
+                                const cleanHex = colorHex.trim();
+                                const colorKey = `${opt.id}_color`;
+                                const chosenColor = shopperValues[colorKey] || opt.choices?.split(",")[0]?.trim();
+                                const isActive = chosenColor === cleanHex;
+                                return (
+                                  <span
+                                    key={cleanHex}
+                                    className={`swatch-circle ${isActive ? "active" : ""}`}
+                                    style={{ backgroundColor: cleanHex, width: "18px", height: "18px" }}
+                                    onClick={() => handleShopperValueChange(colorKey, cleanHex)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
 
                       {opt.type === "textarea" && (
-                        <div>
+                        <div style={{ position: "relative" }}>
                           <textarea
                             maxLength={opt.maxChars}
                             placeholder={opt.placeholder || "Enter special instructions..."}
                             className="search-input"
-                            style={{ padding: "8px 12px", height: "60px" }}
+                            style={{ padding: "8px 12px", height: "60px", marginBottom: opt.allowShopperColor && opt.choices ? "8px" : "0" }}
                             value={shopperValues[opt.id] || ""}
                             onChange={(e) => handleShopperValueChange(opt.id, e.target.value)}
                           />
+
+                          {opt.allowShopperColor && opt.choices && (
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "10px", alignItems: "center" }}>
+                              <span style={{ fontSize: "11px", color: "#6d7175" }}>Text Color:</span>
+                              {opt.choices.split(",").map(colorHex => {
+                                const cleanHex = colorHex.trim();
+                                const colorKey = `${opt.id}_color`;
+                                const chosenColor = shopperValues[colorKey] || opt.choices?.split(",")[0]?.trim();
+                                const isActive = chosenColor === cleanHex;
+                                return (
+                                  <span
+                                    key={cleanHex}
+                                    className={`swatch-circle ${isActive ? "active" : ""}`}
+                                    style={{ backgroundColor: cleanHex, width: "18px", height: "18px" }}
+                                    onClick={() => handleShopperValueChange(colorKey, cleanHex)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -2690,7 +2861,7 @@ export default function ConfigureProductOptions() {
               </div>
 
               {/* Product rows container */}
-              <div style={{ maxHeight: "300px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ maxHeight: "400px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
                 {pickerProducts.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "30px", color: "#8c9196" }}>
                     No unconfigured store products found matching current query.
