@@ -24,6 +24,15 @@ const PRODUCTS_QUERY = `#graphql
           featuredImage {
             url
           }
+          variants(first: 50) {
+            edges {
+              node {
+                id
+                title
+                price
+              }
+            }
+          }
           metafield(namespace: "app", key: "customization_config") {
             id
             value
@@ -593,139 +602,6 @@ export default function ConfigureProductOptions() {
           padding: 16px 20px;
           border-top: 1px solid #e1e3e5;
           background: #f6f6f7;
-        }
-        .editor-fullscreen {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: #f1f2f4;
-          z-index: 999;
-          display: flex;
-          flex-direction: column;
-        }
-        .editor-header {
-          height: 56px;
-          background: #ffffff;
-          border-bottom: 1px solid #e1e3e5;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 20px;
-        }
-        .editor-body {
-          flex: 1;
-          display: flex;
-          overflow: hidden;
-        }
-        .left-panel {
-          width: 25%;
-          min-width: 320px;
-          background: #ffffff;
-          border-right: 1px solid #e1e3e5;
-          display: flex;
-          flex-direction: column;
-          position: relative;
-          overflow: hidden;
-        }
-        .center-panel {
-          width: 50%;
-          background: #f1f2f4;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          position: relative;
-        }
-        .right-panel {
-          width: 25%;
-          min-width: 320px;
-          background: #ffffff;
-          border-left: 1px solid #e1e3e5;
-          padding: 20px;
-          overflow-y: auto;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        .option-layer-card {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 12px;
-          border: 1px solid #e1e3e5;
-          border-radius: 8px;
-          background: #ffffff;
-          margin-bottom: 8px;
-          cursor: grab;
-        }
-        .option-layer-card.selected {
-          border-color: #008060;
-          background-color: #f0fbf7;
-        }
-        .flyout-panel {
-          position: absolute;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: #ffffff;
-          z-index: 100;
-          transform: translateX(100%);
-          transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-          display: flex;
-          flex-direction: column;
-          box-shadow: -4px 0 15px rgba(0,0,0,0.05);
-        }
-        .flyout-panel.active {
-          transform: translateX(0);
-        }
-        .accordion-header {
-          padding: 14px 16px;
-          font-weight: 600;
-          font-size: 14px;
-          background: #f9fafb;
-          border-bottom: 1px solid #e1e3e5;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          cursor: pointer;
-        }
-        .accordion-content {
-          padding: 16px;
-          border-bottom: 1px solid #e1e3e5;
-          background: #ffffff;
-        }
-        .swatch-circle {
-          width: 24px;
-          height: 24px;
-          border-radius: 50%;
-          border: 2px solid #e1e3e5;
-          cursor: pointer;
-        }
-        .swatch-circle.active {
-          border-color: #008060;
-          box-shadow: 0 0 0 2px rgba(0,128,96,0.25);
-        }
-        .coordinates-badge {
-          background: rgba(32, 34, 35, 0.9);
-          color: #ffffff;
-          position: absolute;
-          bottom: 12px;
-          right: 12px;
-          padding: 6px 12px;
-          font-size: 11px;
-          border-radius: 4px;
-          pointer-events: none;
-          font-family: monospace;
-        }
-        .upcharge-badge {
-          background: #e2f1eb;
-          color: #008060;
-          font-size: 12px;
-          font-weight: 700;
-          padding: 4px 8px;
-          border-radius: 4px;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
         }
       `}</style>
 

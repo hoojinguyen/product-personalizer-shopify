@@ -30,16 +30,16 @@ export function WorkspaceEditor({
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [hoveredOptionId, setHoveredOptionId] = useState<string | null>(null);
-  const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
-  const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState(false);
 
-  // Table row actions dropdown state
-  const [activeFlyoutId, setActiveFlyoutId] = useState<string | null>(null);
-  const [activeAccordion, setActiveAccordion] = useState<string>("basic");
+  // Reorder and popover states
+  const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  // Right Sidebar active mode: "designer" or "shopper"
+  const [rightSidebarMode, setRightSidebarMode] = useState<"designer" | "shopper">("designer");
 
   // Shopper storefront inputs testing states
   const [shopperValues, setShopperValues] = useState<Record<string, any>>({});
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   // Drag and drop / Rotate Canvas State
   const [dragState, setDragState] = useState<{
@@ -104,7 +104,6 @@ export function WorkspaceEditor({
             setEnabled(config.enabled ?? false);
             setUpchargeVariantId(config.upchargeVariantId || "");
           } else {
-            // Apply fallback default option
             setOptions([getDefaultTextOption()]);
             setEnabled(config.enabled ?? false);
             setUpchargeVariantId("");
@@ -148,12 +147,12 @@ export function WorkspaceEditor({
       bgImage,
       mockupView,
       scale: 0.5, // Admin canvas workspace scale
-      activeLayerId,
+      activeLayerId: rightSidebarMode === "designer" ? activeLayerId : null, // Hide active outline bounds in storefront preview mode
       hoveredOptionId,
       showGrid,
       livePreview
     });
-  }, [options, bgImage, showGrid, livePreview, activeLayerId, hoveredOptionId, shopperValues, mockupView]);
+  }, [options, bgImage, showGrid, livePreview, activeLayerId, hoveredOptionId, shopperValues, mockupView, rightSidebarMode]);
 
   function getDefaultTextOption(): CustomizationOption {
     return {
@@ -203,15 +202,14 @@ export function WorkspaceEditor({
 
     setOptions([...options, newOption]);
     setActiveLayerId(newOption.id);
-    setActiveFlyoutId(newOption.id);
-    setIsAddDrawerOpen(false);
+    setRightSidebarMode("designer");
+    setIsAddMenuOpen(false);
   };
 
   const handleRemoveOption = (id: string) => {
     if (confirm("Are you sure you want to remove this option layer?")) {
       setOptions(options.filter(o => o.id !== id));
       if (activeLayerId === id) setActiveLayerId(null);
-      if (activeFlyoutId === id) setActiveFlyoutId(null);
     }
   };
 
@@ -255,6 +253,7 @@ export function WorkspaceEditor({
 
   // Interactive bounding box selections, rotate & dragging handlers
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (rightSidebarMode !== "designer") return; // Prevent edits in shopper mode
     const { x, y } = getCanvasMousePos(e);
     const mappedX = x * 2;
     const mappedY = y * 2;
@@ -345,7 +344,7 @@ export function WorkspaceEditor({
 
       const w = opt.type === "text" || opt.type === "textarea"
         ? ((opt.canvasFontSize ?? 48) * String(shopperText || "Text").length * 0.5) 
-        : (opt.canvasWidth ?? 250);
+          : (opt.canvasWidth ?? 250);
       const h = opt.type === "text" || opt.type === "textarea" 
         ? (opt.canvasFontSize ?? 48) 
         : (opt.canvasHeight ?? 250);
@@ -379,6 +378,7 @@ export function WorkspaceEditor({
   };
 
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (rightSidebarMode !== "designer") return;
     const { x, y } = getCanvasMousePos(e);
     const mappedX = x * 2;
     const mappedY = y * 2;
@@ -483,36 +483,225 @@ export function WorkspaceEditor({
     });
   };
 
+  // Get active layer details
+  const activeLayer = options.find(o => o.id === activeLayerId);
+
+  // Extract variants from product if loaded
+  const variants = product.variants?.edges?.map((e: any) => e.node) || [];
+
   return (
     <div className="editor-fullscreen">
       
-      {/* Editor top actions bar */}
+      {/* Styles Injections for Fluid 3-Column Polaris UI */}
+      <style>{`
+        .editor-fullscreen {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background-color: var(--p-color-bg-surface-secondary);
+          z-index: 999;
+          display: flex;
+          flex-direction: column;
+          font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        }
+        .editor-header {
+          height: 56px;
+          background-color: var(--p-color-bg-surface);
+          border-bottom: 1px solid var(--p-color-border-muted);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0 16px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
+        .editor-body {
+          flex: 1;
+          display: flex;
+          overflow: hidden;
+        }
+        .left-panel {
+          width: 320px;
+          background-color: var(--p-color-bg-surface);
+          border-right: 1px solid var(--p-color-border-muted);
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          overflow: hidden;
+        }
+        .center-panel {
+          flex: 1;
+          background-color: var(--p-color-bg-surface-secondary);
+          background-image: radial-gradient(var(--p-color-border-muted) 1px, transparent 1px);
+          background-size: 16px 16px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          padding: 24px;
+        }
+        .right-panel {
+          width: 360px;
+          background-color: var(--p-color-bg-surface);
+          border-left: 1px solid var(--p-color-border-muted);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .panel-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .layer-card {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px;
+          background-color: var(--p-color-bg-surface);
+          border: 1px solid var(--p-color-border-muted);
+          border-radius: 8px;
+          margin-bottom: 8px;
+          cursor: grab;
+          transition: all 0.15s ease;
+        }
+        .layer-card:hover {
+          background-color: var(--p-color-bg-surface-hover);
+          border-color: var(--p-color-border-hover);
+        }
+        .layer-card.selected {
+          background-color: var(--p-color-bg-surface-active);
+          border-color: var(--p-color-border-active);
+          box-shadow: 0 0 0 1px var(--p-color-border-active);
+        }
+        .canvas-container {
+          position: relative;
+          background-color: var(--p-color-bg-surface);
+          border-radius: 12px;
+          box-shadow: var(--p-shadow-300);
+          border: 1px solid var(--p-color-border-muted);
+          padding: 16px;
+        }
+        .floating-toolbar {
+          position: absolute;
+          top: 16px;
+          display: flex;
+          gap: 12px;
+          background-color: var(--p-color-bg-surface);
+          padding: 6px 12px;
+          border-radius: 24px;
+          box-shadow: var(--p-shadow-200);
+          border: 1px solid var(--p-color-border-muted);
+          z-index: 10;
+          align-items: center;
+        }
+        .tab-header {
+          display: flex;
+          border-bottom: 1px solid var(--p-color-border-muted);
+          background-color: var(--p-color-bg-surface-secondary);
+        }
+        .tab-button {
+          flex: 1;
+          padding: 12px;
+          background: none;
+          border: none;
+          font-weight: 600;
+          font-size: 13px;
+          cursor: pointer;
+          color: var(--p-color-text-secondary);
+          border-bottom: 2px solid transparent;
+          transition: all 0.15s ease;
+        }
+        .tab-button:hover {
+          color: var(--p-color-text);
+          background-color: var(--p-color-bg-surface-hover);
+        }
+        .tab-button.active {
+          color: var(--p-color-text-active);
+          border-bottom-color: var(--p-color-border-active);
+          background-color: var(--p-color-bg-surface);
+        }
+        .settings-section-title {
+          font-weight: 700;
+          font-size: 11px;
+          text-transform: uppercase;
+          color: var(--p-color-text-secondary);
+          letter-spacing: 0.05em;
+          margin-bottom: 6px;
+          margin-top: 10px;
+        }
+        .settings-group {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding: 12px;
+          background-color: var(--p-color-bg-surface-secondary);
+          border-radius: 8px;
+          border: 1px solid var(--p-color-border-muted);
+          margin-bottom: 12px;
+        }
+        .swatch-item {
+          width: 28px;
+          height: 28px;
+          border-radius: 50%;
+          border: 2px solid var(--p-color-border-muted);
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .swatch-item.active {
+          transform: scale(1.1);
+          border-color: var(--p-color-border-active);
+          box-shadow: 0 0 0 2px var(--p-color-bg-surface);
+        }
+        .coordinates-overlay {
+          background-color: rgba(0, 0, 0, 0.85);
+          color: #fff;
+          position: absolute;
+          bottom: 12px;
+          right: 12px;
+          padding: 4px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-family: monospace;
+          pointer-events: none;
+          z-index: 5;
+        }
+        .upcharge-pill {
+          background-color: var(--p-color-bg-success-subdued);
+          color: var(--p-color-text-success);
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 700;
+        }
+      `}</style>
+
+      {/* 🟢 TOP ACTION BAR */}
       <div className="editor-header">
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <button className="btn-secondary" style={{ padding: "6px 12px" }} onClick={onBack}>
-            ← Exit editor
-          </button>
-          <span style={{ fontWeight: 600, fontSize: "15px", color: "#202223" }}>
-            Template Designer: <strong style={{ color: "#008060" }}>{product.title}</strong>
-          </span>
+          <div style={{ display: "inline-flex" }}>
+            <s-button variant="secondary" onClick={onBack}>
+              ← Exit Editor
+            </s-button>
+          </div>
+          <h2 style={{ fontSize: "15px", fontWeight: 600, margin: 0, color: "var(--p-color-text)" }}>
+            Template Designer: <strong style={{ color: "var(--p-color-text-success)" }}>{product.title}</strong>
+          </h2>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "13px", fontWeight: 600 }}>Enable store customizer:</span>
-            <label className="status-toggle">
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
-              />
-              <span className="status-slider" />
-            </label>
+          <s-checkbox
+            label="Enable Customizer"
+            checked={enabled}
+            onChange={(e: any) => setEnabled(e.currentTarget.checked)}
+          />
+          <div style={{ display: "inline-flex" }}>
+            <s-button variant="primary" onClick={saveConfiguration}>
+              💾 Save Settings
+            </s-button>
           </div>
-          
-          <button className="btn-primary" onClick={saveConfiguration}>
-            💾 Save customization options
-          </button>
         </div>
       </div>
 
@@ -522,17 +711,64 @@ export function WorkspaceEditor({
             1. LEFT PANEL: LAYERS & ELEMENT BUILDER
             ========================================== */}
         <div className="left-panel">
-          <div style={{ padding: "16px", borderBottom: "1px solid #e1e3e5", background: "#f9fafb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 700, fontSize: "14px" }}>Layers & Personalization fields</span>
-            <button className="btn-primary" style={{ padding: "4px 8px", fontSize: "12px" }} onClick={() => setIsAddDrawerOpen(true)}>
-              ➕ Add field layer
-            </button>
+          <div style={{
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--p-color-border-muted)",
+            background: "var(--p-color-bg-surface-secondary)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center"
+          }}>
+            <h3 style={{ fontSize: "14px", fontWeight: 600, margin: 0 }}>Layers Hierarchy</h3>
+            
+            <div style={{ position: "relative" }}>
+              <div style={{ display: "inline-flex" }}>
+                <s-button variant="secondary" onClick={() => setIsAddMenuOpen(!isAddMenuOpen)}>
+                  ➕ Add Layer
+                </s-button>
+              </div>
+
+              {isAddMenuOpen && (
+                <>
+                  <div
+                    style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100 }}
+                    onClick={() => setIsAddMenuOpen(false)}
+                  />
+                  <div style={{
+                    position: "absolute",
+                    right: "0",
+                    top: "36px",
+                    background: "var(--p-color-bg-surface)",
+                    border: "1px solid var(--p-color-border-muted)",
+                    borderRadius: "8px",
+                    boxShadow: "var(--p-shadow-200)",
+                    zIndex: 101,
+                    width: "220px",
+                    display: "flex",
+                    flexDirection: "column",
+                    padding: "8px",
+                    gap: "4px"
+                  }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("text")}>🔤 Short Text Input</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("textarea")}>📝 Text Area Block</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("select")}>🔽 Select Dropdown</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("swatch")}>🎨 Swatches Color</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("file")}>📁 Decal File Upload</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("checkbox")}>☑️ Option Checkbox</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("clipart")}>🎨 Clipart Graphic</s-button>
+                      <s-button variant="secondary" onClick={() => handleAddElementOption("font")}>🔤 Typography Font</s-button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           <div style={{ padding: "16px", overflowY: "auto", flex: 1 }}>
             {options.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px 10px", color: "#8c9196", fontSize: "12px" }}>
-                No layer elements configured yet. Click "Add field layer" to begin.
+              <div style={{ textAlign: "center", padding: "40px 10px", color: "var(--p-color-text-secondary)", fontSize: "13px" }}>
+                No layer elements configured yet. Click "Add Layer" to begin.
               </div>
             ) : (
               options.map((opt, idx) => {
@@ -544,370 +780,78 @@ export function WorkspaceEditor({
                     onDragStart={() => handleDragStart(idx)}
                     onDragOver={(e) => handleDragOver(e, idx)}
                     onDragEnd={handleDragEnd}
-                    className={`option-layer-card ${isSelected ? "selected" : ""}`}
+                    className={`layer-card ${isSelected ? "selected" : ""}`}
                     onClick={() => {
                       setActiveLayerId(opt.id);
-                      setActiveFlyoutId(opt.id);
+                      setRightSidebarMode("designer");
                     }}
                   >
-                    <div style={{ color: "#8c9196", cursor: "grab", fontSize: "14px" }}>☰</div>
+                    <div style={{ color: "var(--p-color-text-secondary)", cursor: "grab", fontSize: "14px" }}>☰</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <p style={{ fontSize: "13px", fontWeight: 600, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {opt.label}
-                      </div>
-                      <div style={{ fontSize: "10px", color: "#6d7175", textTransform: "uppercase" }}>
+                      </p>
+                      <span style={{ fontSize: "11px", color: "var(--p-color-text-secondary)", textTransform: "uppercase" }}>
                         {opt.type} {opt.priceUpcharge > 0 && `• +$${opt.priceUpcharge.toFixed(2)}`}
-                      </div>
+                      </span>
                     </div>
                     
-                    <button
-                      className="btn-danger"
-                      style={{ padding: "2px 6px", fontSize: "10px" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveOption(opt.id);
-                      }}
-                    >
-                      Delete
-                    </button>
+                    <div style={{ display: "inline-flex" }}>
+                      <s-button
+                        variant="secondary"
+                        onClick={(e: any) => {
+                          e.stopPropagation();
+                          handleRemoveOption(opt.id);
+                        }}
+                      >
+                        Delete
+                      </s-button>
+                    </div>
                   </div>
                 );
               })
             )}
           </div>
-
-          {/* Add Drawer component slider */}
-          <div className={`flyout-panel ${isAddDrawerOpen ? "active" : ""}`} style={{ zIndex: 110 }}>
-            <div style={{ padding: "16px", borderBottom: "1px solid #e1e3e5", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f9fafb" }}>
-              <span style={{ fontWeight: 700, fontSize: "14px" }}>Add Personalization Option field</span>
-              <button className="modal-close" onClick={() => setIsAddDrawerOpen(false)}>×</button>
-            </div>
-            <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto" }}>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("text")}>🔤 Short Text Input</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("textarea")}>📝 Text Area Block</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("select")}>🔽 Select Dropdown</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("swatch")}>🎨 Swatches Color picker</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("file")}>📁 Decal File Upload</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("checkbox")}>☑️ Option Checkbox</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("clipart")}>🎨 Clipart Graphic Selector</button>
-              <button className="btn-secondary" style={{ justifyContent: "flex-start", padding: "12px" }} onClick={() => handleAddElementOption("font")}>🔤 Typography Font Selector</button>
-            </div>
-          </div>
-
-          {/* Settings Drawer flyout */}
-          {activeFlyoutId && (() => {
-            const opt = options.find(o => o.id === activeFlyoutId);
-            if (!opt) return null;
-
-            return (
-              <div className={`flyout-panel ${activeFlyoutId ? "active" : ""}`}>
-                <div style={{ padding: "16px", borderBottom: "1px solid #e1e3e5", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f9fafb" }}>
-                  <span style={{ fontWeight: 700, fontSize: "14px" }}>Configure Layer Details</span>
-                  <button className="modal-close" onClick={() => setActiveFlyoutId(null)}>×</button>
-                </div>
-                
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  
-                  {/* Accordion 1: Basic Options */}
-                  <div className="accordion-item">
-                    <div className="accordion-header" onClick={() => setActiveAccordion(activeAccordion === "basic" ? "" : "basic")}>
-                      <span>⚙️ Basic settings</span>
-                      <span>{activeAccordion === "basic" ? "▲" : "▼"}</span>
-                    </div>
-                    {activeAccordion === "basic" && (
-                      <div className="accordion-content" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                        <div>
-                          <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>Option Label Title</label>
-                          <input
-                            type="text"
-                            value={opt.label}
-                            className="search-input"
-                            style={{ width: "100%" }}
-                            onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
-                          />
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>Required validation check</label>
-                          <input
-                            type="checkbox"
-                            checked={opt.required}
-                            id={`required-check-${opt.id}`}
-                            onChange={(e) => handleUpdateOption(opt.id, { required: e.target.checked })}
-                          />
-                          <label htmlFor={`required-check-${opt.id}`} style={{ fontSize: "13px", marginLeft: "6px" }}>Shopper must fill this field</label>
-                        </div>
-
-                        <div>
-                          <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>Layout price upcharge amount ($)</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={opt.priceUpcharge}
-                            className="search-input"
-                            style={{ width: "100%" }}
-                            onChange={(e) => handleUpdateOption(opt.id, { priceUpcharge: parseFloat(e.target.value) || 0 })}
-                          />
-                        </div>
-
-                        {(opt.type === "text" || opt.type === "textarea") && (
-                          <>
-                            <div>
-                              <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>Characters limit threshold</label>
-                              <input
-                                type="number"
-                                value={opt.maxChars || ""}
-                                className="search-input"
-                                style={{ width: "100%" }}
-                                onChange={(e) => handleUpdateOption(opt.id, { maxChars: parseInt(e.target.value) || undefined })}
-                              />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>Case constraint override</label>
-                              <select
-                                value={opt.caseConstraint || "normal"}
-                                className="filter-select"
-                                style={{ width: "100%" }}
-                                onChange={(e) => handleUpdateOption(opt.id, { caseConstraint: e.target.value as any })}
-                              >
-                                <option value="normal">Normal mixed case</option>
-                                <option value="uppercase">Uppercase formatting</option>
-                                <option value="lowercase">Lowercase formatting</option>
-                              </select>
-                            </div>
-                          </>
-                        )}
-
-                        {(opt.type === "select" || opt.type === "swatch" || opt.type === "clipart") && (
-                          <div>
-                            <label style={{ fontSize: "12px", fontWeight: 600, display: "block", marginBottom: "4px" }}>
-                              {opt.type === "swatch" ? "Color Swatches (Hex list comma separated)" : "Choices list (comma separated)"}
-                            </label>
-                            <textarea
-                              value={opt.choices || ""}
-                              className="search-input"
-                              style={{ width: "100%", height: "60px" }}
-                              onChange={(e) => handleUpdateOption(opt.id, { choices: e.target.value })}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Accordion 2: Canvas Positions */}
-                  <div className="accordion-item">
-                    <div className="accordion-header" onClick={() => setActiveAccordion(activeAccordion === "canvas" ? "" : "canvas")}>
-                      <span>📐 Layout placements (800x800 logical matrix)</span>
-                      <span>{activeAccordion === "canvas" ? "▲" : "▼"}</span>
-                    </div>
-                    {activeAccordion === "canvas" && (
-                      <div className="accordion-content" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                        <div style={{ display: "flex", gap: "10px" }}>
-                          <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: "11px", display: "block" }}>X coordinate</label>
-                            <input
-                              type="number"
-                              value={opt.canvasX ?? 400}
-                              className="search-input"
-                              onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
-                            />
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: "11px", display: "block" }}>Y coordinate</label>
-                            <input
-                              type="number"
-                              value={opt.canvasY ?? 400}
-                              className="search-input"
-                              onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
-                            />
-                          </div>
-                        </div>
-
-                        {(opt.type === "text" || opt.type === "textarea") ? (
-                          <div>
-                            <label style={{ fontSize: "11px", display: "block" }}>Logical font size (px)</label>
-                            <input
-                              type="number"
-                              value={opt.canvasFontSize ?? 48}
-                              className="search-input"
-                              onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
-                            />
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", gap: "10px" }}>
-                            <div style={{ flex: 1 }}>
-                              <label style={{ fontSize: "11px", display: "block" }}>Layer Width (px)</label>
-                              <input
-                                type="number"
-                                value={opt.canvasWidth ?? 250}
-                                className="search-input"
-                                onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
-                              />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <label style={{ fontSize: "11px", display: "block" }}>Layer Height (px)</label>
-                              <input
-                                type="number"
-                                value={opt.canvasHeight ?? 250}
-                                className="search-input"
-                                onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        <div>
-                          <label style={{ fontSize: "11px", display: "block" }}>Layer Rotation angle (0-360°)</label>
-                          <input
-                            type="range"
-                            min="0"
-                            max="360"
-                            value={opt.canvasRotation ?? 0}
-                            style={{ width: "100%" }}
-                            onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Accordion 3: Conditional Visibility Logic */}
-                  <div className="accordion-item">
-                    <div className="accordion-header" onClick={() => setActiveAccordion(activeAccordion === "conditional" ? "" : "conditional")}>
-                      <span>🔗 Conditional Logic Rules</span>
-                      <span>{activeAccordion === "conditional" ? "▲" : "▼"}</span>
-                    </div>
-                    {activeAccordion === "conditional" && (
-                      <div className="accordion-content" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                        <p style={{ fontSize: "11px", color: "#6d7175", margin: 0 }}>
-                          Select logic parameters to show or hide this layer element depending on another option field value selection:
-                        </p>
-
-                        {(opt.conditionalRules || []).map((rule, ruleIdx) => (
-                          <div key={ruleIdx} style={{ display: "flex", flexDirection: "column", gap: "6px", padding: "8px", border: "1px solid #e1e3e5", borderRadius: "6px", background: "#f9fafb" }}>
-                            <select
-                              value={rule.fieldId}
-                              onChange={(e) => {
-                                const updatedRules = [...(opt.conditionalRules || [])];
-                                updatedRules[ruleIdx].fieldId = e.target.value;
-                                handleUpdateOption(opt.id, { conditionalRules: updatedRules });
-                              }}
-                              className="filter-select"
-                              style={{ width: "100%", padding: "6px" }}
-                            >
-                              <option value="">Select option field...</option>
-                              {options.filter(o => o.id !== opt.id).map(o => (
-                                <option key={o.id} value={o.id}>{o.label}</option>
-                              ))}
-                            </select>
-
-                            <select
-                              value={rule.operator}
-                              onChange={(e) => {
-                                const updatedRules = [...(opt.conditionalRules || [])];
-                                updatedRules[ruleIdx].operator = e.target.value as any;
-                                handleUpdateOption(opt.id, { conditionalRules: updatedRules });
-                              }}
-                              className="filter-select"
-                              style={{ width: "100%", padding: "6px" }}
-                            >
-                              <option value="equals">Equals</option>
-                              <option value="not_equals">Not Equals</option>
-                              <option value="checked">Checked</option>
-                              <option value="unchecked">Unchecked</option>
-                            </select>
-
-                            {rule.operator !== "checked" && rule.operator !== "unchecked" && (
-                              <input
-                                type="text"
-                                className="search-input"
-                                style={{ padding: "6px" }}
-                                placeholder="Value to match..."
-                                value={rule.value}
-                                onChange={(e) => {
-                                  const updatedRules = [...(opt.conditionalRules || [])];
-                                  updatedRules[ruleIdx].value = e.target.value;
-                                  handleUpdateOption(opt.id, { conditionalRules: updatedRules });
-                                }}
-                              />
-                            )}
-
-                            <button
-                              className="btn-danger"
-                              style={{ alignSelf: "flex-end", padding: "4px 8px" }}
-                              onClick={() => {
-                                const updatedRules = (opt.conditionalRules || []).filter((_, rIdx) => rIdx !== ruleIdx);
-                                handleUpdateOption(opt.id, { conditionalRules: updatedRules });
-                              }}
-                            >
-                              Remove Rule
-                            </button>
-                          </div>
-                        ))}
-
-                        <button
-                          className="btn-secondary"
-                          style={{ width: "100%", padding: "6px", fontSize: "12px", borderStyle: "dashed" }}
-                          onClick={() => {
-                            const updatedRules = [...(opt.conditionalRules || []), { fieldId: "", operator: "equals" as const, value: "" }];
-                            handleUpdateOption(opt.id, { conditionalRules: updatedRules });
-                          }}
-                        >
-                          ➕ Add Conditional Rule
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              </div>
-            );
-          })()}
         </div>
 
         {/* ==========================================
             2. CENTER PANEL: THE WYSIWYG CANVAS
             ========================================== */}
         <div className="center-panel">
-          <div style={{
-            position: "absolute",
-            top: "16px",
-            display: "flex",
-            gap: "14px",
-            background: "#ffffff",
-            padding: "8px 16px",
-            borderRadius: "24px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-            zIndex: 10,
-            alignItems: "center"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <input
-                type="checkbox"
-                id="grid-markers-toggle"
-                checked={showGrid}
-                onChange={(e) => setShowGrid(e.target.checked)}
-              />
-              <label htmlFor="grid-markers-toggle" style={{ fontSize: "12px", fontWeight: 600 }}>Show Alignment Grid</label>
-            </div>
+          
+          {/* Floating Canvas Toolbar */}
+          <div className="floating-toolbar">
+            <s-checkbox
+              label="Grid Guides"
+              checked={showGrid}
+              onChange={(e: any) => setShowGrid(e.currentTarget.checked)}
+            />
             
-            <span style={{ color: "#e1e3e5" }}>|</span>
+            <span style={{ color: "var(--p-color-border-muted)" }}>|</span>
             
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "12px", fontWeight: 600 }}>Live Preview</span>
-              <label className="status-toggle" style={{ transform: "scale(0.8)", margin: "0 -4px" }}>
-                <input
-                  type="checkbox"
-                  checked={livePreview}
-                  onChange={(e) => setLivePreview(e.target.checked)}
-                />
-                <span className="status-slider" />
-              </label>
-            </div>
+            <s-checkbox
+              label="Live Sandbox"
+              checked={livePreview}
+              onChange={(e: any) => setLivePreview(e.currentTarget.checked)}
+            />
+
+            <span style={{ color: "var(--p-color-border-muted)" }}>|</span>
+
+            <s-select
+              label="Mockup View"
+              labelAccessibilityVisibility="exclusive"
+              value={mockupView}
+              onChange={(e: any) => setMockupView(e.currentTarget.value)}
+            >
+              <s-option value="Front Mockup View">Front View</s-option>
+              <s-option value="Back Mockup View">Back View</s-option>
+            </s-select>
+
+            <s-badge tone="info">Scale: 50%</s-badge>
           </div>
 
-          <div style={{ position: "relative" }}>
+          {/* Styled Canvas Card Sheet */}
+          <div className="canvas-container">
             <canvas
               ref={canvasRef}
               onMouseDown={handleCanvasMouseDown}
@@ -915,197 +859,449 @@ export function WorkspaceEditor({
               onMouseUp={handleCanvasMouseUp}
               onMouseLeave={handleCanvasMouseUp}
               style={{
-                border: "1px solid #babfc3",
-                borderRadius: "8px",
-                boxShadow: "0 4px 20px rgba(0,0,0,0.06)",
+                border: "1px solid var(--p-color-border-muted)",
+                borderRadius: "6px",
                 background: "#ffffff",
-                cursor: dragState.isDragging ? "grabbing" : dragState.isResizing ? "nwse-resize" : dragState.isRotating ? "crosshair" : "default"
+                cursor: rightSidebarMode !== "designer" ? "default" : dragState.isDragging ? "grabbing" : dragState.isResizing ? "nwse-resize" : dragState.isRotating ? "crosshair" : "default"
               }}
             />
 
             {/* Logical coordinate overlays in workspace */}
-            {activeLayerId && (() => {
+            {rightSidebarMode === "designer" && activeLayerId && (() => {
               const opt = options.find(o => o.id === activeLayerId);
               if (!opt || !isOptionVisible(opt, shopperValues)) return null;
               return (
-                <div className="coordinates-badge">
-                  X: {opt.canvasX} | Y: {opt.canvasY} | Rotation: {opt.canvasRotation}° {opt.canvasWidth && `| W: ${opt.canvasWidth} H: ${opt.canvasHeight}`}
+                <div className="coordinates-overlay">
+                  X: {opt.canvasX} | Y: {opt.canvasY} {opt.canvasWidth && `| W: ${opt.canvasWidth} H: ${opt.canvasHeight}`} | Rotation: {opt.canvasRotation}°
                 </div>
               );
             })()}
           </div>
 
-          <div style={{ marginTop: "16px", textAlign: "center", fontSize: "12px", color: "#6d7175" }}>
-            💡 Drag elements to position, rotate using the top node, and resize using corner handles!
+          <div style={{ marginTop: "16px", textAlign: "center" }}>
+            <p style={{ fontSize: "13px", color: "var(--p-color-text-secondary)", margin: 0 }}>
+              💡 Drag layers to reposition, rotate using the top circular handle, and resize via corners!
+            </p>
           </div>
         </div>
 
         {/* ==========================================
-            3. RIGHT PANEL: SHOPPER INPUT PREVIEW
+            3. RIGHT PANEL: DESIGNER SETTINGS / SHOPPER PREVIEW
             ========================================== */}
         <div className="right-panel">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e1e3e5", paddingBottom: "12px" }}>
-            <span style={{ fontWeight: 700, fontSize: "14px" }}>🛍️ Shopper Form Preview</span>
-            <span className="upcharge-badge">
-              + ${calculateTotalUpcharges(options, shopperValues).toFixed(2)} Upcharge
-            </span>
+          
+          {/* Segmented Mode Tabs Header */}
+          <div className="tab-header">
+            <button
+              className={`tab-button ${rightSidebarMode === "designer" ? "active" : ""}`}
+              onClick={() => setRightSidebarMode("designer")}
+            >
+              🛠️ Layer Configuration
+            </button>
+            <button
+              className={`tab-button ${rightSidebarMode === "shopper" ? "active" : ""}`}
+              onClick={() => setRightSidebarMode("shopper")}
+            >
+              🛍️ Storefront Preview
+            </button>
           </div>
 
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "16px" }}>
-            {options.map((opt) => {
-              if (!isOptionVisible(opt, shopperValues)) return null;
-
-              return (
-                <div key={opt.id} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label style={{ fontSize: "13px", fontWeight: 600, display: "flex", justifyContent: "space-between" }}>
-                    <span>
-                      {opt.label} {opt.required && <span style={{ color: "#d82c0d" }}>*</span>}
-                    </span>
-                    {opt.priceUpcharge > 0 && (
-                      <span style={{ color: "#008060", fontSize: "11px" }}>(+${opt.priceUpcharge.toFixed(2)})</span>
-                    )}
-                  </label>
-
-                  {opt.type === "text" && (
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type="text"
-                        maxLength={opt.maxChars}
-                        placeholder={opt.placeholder || "Enter engraving text..."}
-                        className="search-input"
-                        style={{ padding: "8px 12px" }}
-                        value={shopperValues[opt.id] || ""}
-                        onChange={(e) => handleShopperValueChange(opt.id, e.target.value)}
+          <div className="panel-content">
+            
+            {/* 🛠️ DESIGNER CONFIGURATION MODE */}
+            {rightSidebarMode === "designer" && (
+              <>
+                {activeLayer ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    
+                    {/* Basic Settings */}
+                    <div className="settings-section-title">⚙️ Layer Properties</div>
+                    <div className="settings-group">
+                      <s-text-field
+                        label="Option Label Title"
+                        value={activeLayer.label}
+                        onChange={(e: any) => handleUpdateOption(activeLayer.id, { label: e.currentTarget.value })}
                       />
-                      {opt.maxChars && (
-                        <span style={{ fontSize: "10px", color: "#8c9196", position: "absolute", right: "10px", bottom: "-14px" }}>
-                          {opt.maxChars - String(shopperValues[opt.id] || "").length} characters left
-                        </span>
+                      
+                      <s-checkbox
+                        label="Shopper validation required"
+                        checked={activeLayer.required}
+                        onChange={(e: any) => handleUpdateOption(activeLayer.id, { required: e.currentTarget.checked })}
+                      />
+
+                      <s-number-field
+                        label="Price Upcharge ($)"
+                        value={String(activeLayer.priceUpcharge)}
+                        onChange={(e: any) => handleUpdateOption(activeLayer.id, { priceUpcharge: parseFloat(e.currentTarget.value) || 0 })}
+                        min={0}
+                        step={0.01}
+                      />
+
+                      {/* Text & Text Area limits */}
+                      {(activeLayer.type === "text" || activeLayer.type === "textarea") && (
+                        <>
+                          <s-number-field
+                            label="Characters limit threshold"
+                            value={String(activeLayer.maxChars ?? 0)}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { maxChars: parseInt(e.currentTarget.value) || undefined })}
+                            min={0}
+                          />
+                          <s-select
+                            label="Case restriction override"
+                            value={activeLayer.caseConstraint || "normal"}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { caseConstraint: e.currentTarget.value as any })}
+                          >
+                            <s-option value="normal">Normal mixed case</s-option>
+                            <s-option value="uppercase">FORCE UPPERCASE</s-option>
+                            <s-option value="lowercase">force lowercase</s-option>
+                          </s-select>
+                        </>
+                      )}
+
+                      {/* Dropdown / Swatch choices */}
+                      {(activeLayer.type === "select" || activeLayer.type === "swatch" || activeLayer.type === "clipart") && (
+                        <s-text-field
+                          label={activeLayer.type === "swatch" ? "Color Swatches (Hex list comma separated)" : "Choices list (comma separated)"}
+                          value={activeLayer.choices || ""}
+                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { choices: e.currentTarget.value })}
+                          placeholder={activeLayer.type === "swatch" ? "#000, #fff, #ff0000" : "Option A, Option B, Option C"}
+                        />
                       )}
                     </div>
-                  )}
 
-                  {opt.type === "textarea" && (
-                    <textarea
-                      maxLength={opt.maxChars}
-                      placeholder={opt.placeholder || "Enter engraving instructions..."}
-                      className="search-input"
-                      style={{ padding: "8px 12px", height: "60px" }}
-                      value={shopperValues[opt.id] || ""}
-                      onChange={(e) => handleShopperValueChange(opt.id, e.target.value)}
-                    />
-                  )}
+                    {/* Transform Matrix Settings */}
+                    <div className="settings-section-title">📐 Canvas Placements</div>
+                    <div className="settings-group">
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <s-number-field
+                          label="X Position (px)"
+                          value={String(activeLayer.canvasX ?? 400)}
+                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasX: parseInt(e.currentTarget.value) || 0 })}
+                        />
+                        <s-number-field
+                          label="Y Position (px)"
+                          value={String(activeLayer.canvasY ?? 400)}
+                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasY: parseInt(e.currentTarget.value) || 0 })}
+                        />
+                      </div>
 
-                  {opt.type === "select" && (
-                    <select
-                      className="filter-select"
-                      style={{ width: "100%" }}
-                      value={shopperValues[opt.id] || ""}
-                      onChange={(e) => handleShopperValueChange(opt.id, e.target.value)}
-                    >
-                      <option value="">Choose option...</option>
-                      {opt.choices?.split(",").map(c => (
-                        <option key={c.trim()} value={c.trim()}>{c.trim()}</option>
-                      ))}
-                    </select>
-                  )}
-
-                  {opt.type === "swatch" && (
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
-                      {opt.choices?.split(",").map(colorHex => {
-                        const cleanHex = colorHex.trim();
-                        const isActive = shopperValues[opt.id] === cleanHex;
-                        return (
-                          <span
-                            key={cleanHex}
-                            className={`swatch-circle ${isActive ? "active" : ""}`}
-                            style={{ backgroundColor: cleanHex }}
-                            onClick={() => handleShopperValueChange(opt.id, cleanHex)}
+                      {(activeLayer.type === "text" || activeLayer.type === "textarea") ? (
+                        <s-number-field
+                          label="Logical Font Size (px)"
+                          value={String(activeLayer.canvasFontSize ?? 48)}
+                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasFontSize: parseInt(e.currentTarget.value) || 0 })}
+                        />
+                      ) : (
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <s-number-field
+                            label="Layer Width (px)"
+                            value={String(activeLayer.canvasWidth ?? 250)}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasWidth: parseInt(e.currentTarget.value) || 0 })}
                           />
-                        );
-                      })}
+                          <s-number-field
+                            label="Layer Height (px)"
+                            value={String(activeLayer.canvasHeight ?? 250)}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasHeight: parseInt(e.currentTarget.value) || 0 })}
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                          <span style={{ fontSize: "13px" }}>Layer Rotation</span>
+                          <span style={{ fontSize: "13px", fontWeight: 600 }}>{activeLayer.canvasRotation ?? 0}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="360"
+                          value={activeLayer.canvasRotation ?? 0}
+                          style={{ width: "100%", accentColor: "var(--p-color-border-active)" }}
+                          onChange={(e) => handleUpdateOption(activeLayer.id, { canvasRotation: parseInt(e.target.value) || 0 })}
+                        />
+                      </div>
                     </div>
-                  )}
 
-                  {opt.type === "file" && (
-                    <div style={{ border: "1px dashed #babfc3", padding: "16px", borderRadius: "6px", textAlign: "center", background: "#f9fafb" }}>
-                      <span style={{ color: "#6d7175", fontSize: "12px" }}>📁 Drag & drop Decal visual graphic here</span>
-                    </div>
-                  )}
-
-                  {opt.type === "checkbox" && (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <input
-                        type="checkbox"
-                        id={`chk-sh-${opt.id}`}
-                        checked={!!shopperValues[opt.id]}
-                        onChange={(e) => handleShopperValueChange(opt.id, e.target.checked)}
-                      />
-                      <label htmlFor={`chk-sh-${opt.id}`} style={{ fontSize: "13px", cursor: "pointer" }}>
-                        Yes, I want this personalization choice!
-                      </label>
-                    </div>
-                  )}
-
-                  {opt.type === "font" && (
-                    <select
-                      className="filter-select"
-                      style={{ width: "100%" }}
-                      value={shopperValues[opt.id] || ""}
-                      onChange={(e) => handleShopperValueChange(opt.id, e.target.value)}
-                    >
-                      <option value="Arial">Choose typography style...</option>
-                      <option value="Arial">Arial</option>
-                      <option value="Times New Roman">Times New Roman</option>
-                      {fontAssets.map(f => (
-                        <option key={f.id} value={f.name}>{f.name}</option>
-                      ))}
-                    </select>
-                  )}
-
-                  {opt.type === "clipart" && (
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                      {opt.choices?.split(",").map(clipartVal => {
-                        const cleanVal = clipartVal.trim();
-                        const isActive = shopperValues[opt.id] === cleanVal;
-                        return (
-                          <button
-                            key={cleanVal}
-                            className="btn-secondary"
-                            style={{
-                              padding: "6px 12px",
-                              fontSize: "11px",
-                              borderColor: isActive ? "#008060" : "#babfc3",
-                              background: isActive ? "#f0fbf7" : "#ffffff"
+                    {/* Conditional Rules Visibility Routing */}
+                    <div className="settings-section-title">🔗 Visibility Conditional Logic</div>
+                    <div className="settings-group">
+                      {(activeLayer.conditionalRules || []).map((rule, ruleIdx) => (
+                        <div key={ruleIdx} style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                          padding: "10px",
+                          border: "1px solid var(--p-color-border-muted)",
+                          borderRadius: "6px",
+                          backgroundColor: "var(--p-color-bg-surface)"
+                        }}>
+                          <s-select
+                            label="If Option..."
+                            value={rule.fieldId}
+                            onChange={(e: any) => {
+                              const updatedRules = [...(activeLayer.conditionalRules || [])];
+                              updatedRules[ruleIdx].fieldId = e.currentTarget.value;
+                              handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
                             }}
-                            onClick={() => handleShopperValueChange(opt.id, cleanVal)}
                           >
-                            {cleanVal}
-                          </button>
-                        );
-                      })}
+                            <s-option value="">Select option...</s-option>
+                            {options.filter(o => o.id !== activeLayer.id).map(o => (
+                              <s-option key={o.id} value={o.id}>{o.label}</s-option>
+                            ))}
+                          </s-select>
+
+                          <s-select
+                            label="Operator"
+                            value={rule.operator}
+                            onChange={(e: any) => {
+                              const updatedRules = [...(activeLayer.conditionalRules || [])];
+                              updatedRules[ruleIdx].operator = e.currentTarget.value as any;
+                              handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                            }}
+                          >
+                            <s-option value="equals">Equals</s-option>
+                            <s-option value="not_equals">Not Equals</s-option>
+                            <s-option value="checked">Checked</s-option>
+                            <s-option value="unchecked">Unchecked</s-option>
+                          </s-select>
+
+                          {rule.operator !== "checked" && rule.operator !== "unchecked" && (
+                            <s-text-field
+                              label="Value to match"
+                              placeholder="Value..."
+                              value={rule.value}
+                              onChange={(e: any) => {
+                                const updatedRules = [...(activeLayer.conditionalRules || [])];
+                                updatedRules[ruleIdx].value = e.currentTarget.value;
+                                handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                              }}
+                            />
+                          )}
+
+                          <div style={{ display: "inline-flex" }}>
+                            <s-button
+                              variant="secondary"
+                              onClick={() => {
+                                const updatedRules = (activeLayer.conditionalRules || []).filter((_, rIdx) => rIdx !== ruleIdx);
+                                handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                              }}
+                            >
+                              Remove Rule
+                            </s-button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <div style={{ display: "inline-flex" }}>
+                        <s-button
+                          variant="secondary"
+                          onClick={() => {
+                            const updatedRules = [...(activeLayer.conditionalRules || []), { fieldId: "", operator: "equals" as const, value: "" }];
+                            handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                          }}
+                        >
+                          ➕ Add Visibility Rule
+                        </s-button>
+                      </div>
                     </div>
-                  )}
 
-                  {opt.description && (
-                    <span style={{ fontSize: "11px", color: "#6d7175", fontStyle: "italic" }}>
-                      {opt.description}
-                    </span>
-                  )}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    <div className="settings-section-title">⚙️ Template Configuration</div>
+                    <div className="settings-group">
+                      <s-checkbox
+                        label="Storefront customizable widget enabled"
+                        checked={enabled}
+                        onChange={(e: any) => setEnabled(e.currentTarget.checked)}
+                      />
+
+                      {variants.length > 0 ? (
+                        <s-select
+                          label="Synced Upcharge Variant"
+                          details="Sync customization fees directly inside the main cart line item using Cart Transform API"
+                          value={upchargeVariantId}
+                          onChange={(e: any) => setUpchargeVariantId(e.currentTarget.value)}
+                        >
+                          <s-option value="">None (No upcharge variant mapped)</s-option>
+                          {variants.map((v: any) => (
+                            <s-option key={v.id} value={v.id}>
+                              {v.title} ({v.price ? `$${v.price}` : "Free"})
+                            </s-option>
+                          ))}
+                        </s-select>
+                      ) : (
+                        <s-text-field
+                          label="Synced Upcharge Variant ID"
+                          details="Specify the ProductVariant GID linked downstream to checkout upcharge properties."
+                          value={upchargeVariantId}
+                          onChange={(e: any) => setUpchargeVariantId(e.currentTarget.value)}
+                          placeholder="gid://shopify/ProductVariant/..."
+                        />
+                      )}
+                    </div>
+
+                    <div style={{ textAlign: "center", padding: "30px 10px", border: "1px dashed var(--p-color-border-muted)", borderRadius: "8px", background: "var(--p-color-bg-surface-secondary)" }}>
+                      <p style={{ fontSize: "13px", color: "var(--p-color-text-secondary)", margin: 0 }}>
+                        Select a layer from the left sidebar to configure its coordinates, styles, and visibility criteria contextually.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* 🛍️ STOREFRONT EMULATOR PREVIEW MODE */}
+            {rightSidebarMode === "shopper" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px", height: "100%" }}>
+                
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h3 style={{ fontSize: "14px", fontWeight: 600, margin: 0 }}>Widget Emulator</h3>
+                  <span className="upcharge-pill">
+                    + ${calculateTotalUpcharges(options, shopperValues).toFixed(2)} Fee
+                  </span>
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Checkout simulator button */}
-          <div style={{ borderTop: "1px solid #e1e3e5", paddingTop: "16px", marginTop: "auto" }}>
-            <button
-              className="btn-primary"
-              style={{ width: "100%", height: "44px", justifyContent: "center", fontSize: "14px" }}
-              onClick={() => alert("Simulation adds this customized design to cart")}
-            >
-              🛒 Simulate storefront checkout
-            </button>
+                <s-divider />
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
+                  {options.map((opt) => {
+                    if (!isOptionVisible(opt, shopperValues)) return null;
+
+                    return (
+                      <div key={opt.id} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <p style={{ fontSize: "13px", fontWeight: 600, margin: 0 }}>
+                          {opt.label} {opt.required && <span style={{ color: "var(--p-color-text-critical)" }}>*</span>}
+                          {opt.priceUpcharge > 0 && (
+                            <span style={{ color: "var(--p-color-text-success)", fontSize: "12px", marginLeft: "4px" }}>(+${opt.priceUpcharge.toFixed(2)})</span>
+                          )}
+                        </p>
+
+                        {opt.type === "text" && (
+                          <div style={{ position: "relative" }}>
+                            <s-text-field
+                              value={shopperValues[opt.id] || ""}
+                              onChange={(e: any) => handleShopperValueChange(opt.id, e.currentTarget.value)}
+                              placeholder={opt.placeholder || "Enter custom text..."}
+                            />
+                            {opt.maxChars && (
+                              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
+                                <span style={{ fontSize: "11px", color: "var(--p-color-text-secondary)" }}>
+                                  {opt.maxChars - String(shopperValues[opt.id] || "").length} / {opt.maxChars} chars remaining
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {opt.type === "textarea" && (
+                          <s-text-area
+                            value={shopperValues[opt.id] || ""}
+                            onChange={(e: any) => handleShopperValueChange(opt.id, e.currentTarget.value)}
+                            placeholder={opt.placeholder || "Enter details..."}
+                            rows={3}
+                          />
+                        )}
+
+                        {opt.type === "select" && (
+                          <s-select
+                            value={shopperValues[opt.id] || ""}
+                            onChange={(e: any) => handleShopperValueChange(opt.id, e.currentTarget.value)}
+                          >
+                            <s-option value="">Choose option...</s-option>
+                            {opt.choices?.split(",").map(c => (
+                              <s-option key={c.trim()} value={c.trim()}>{c.trim()}</s-option>
+                            ))}
+                          </s-select>
+                        )}
+
+                        {opt.type === "swatch" && (
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+                            {opt.choices?.split(",").map(colorHex => {
+                              const cleanHex = colorHex.trim();
+                              const isActive = shopperValues[opt.id] === cleanHex;
+                              return (
+                                <span
+                                  key={cleanHex}
+                                  className={`swatch-item ${isActive ? "active" : ""}`}
+                                  style={{ backgroundColor: cleanHex }}
+                                  onClick={() => handleShopperValueChange(opt.id, cleanHex)}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {opt.type === "file" && (
+                          <div style={{ border: "2px dashed var(--p-color-border-muted)", padding: "16px", borderRadius: "8px", textAlign: "center", backgroundColor: "var(--p-color-bg-surface-secondary)" }}>
+                            <p style={{ fontSize: "13px", color: "var(--p-color-text-secondary)", margin: 0 }}>📁 Drag & drop Decal graphics here</p>
+                          </div>
+                        )}
+
+                        {opt.type === "checkbox" && (
+                          <s-checkbox
+                            label="Yes, I want this personalization choice!"
+                            checked={!!shopperValues[opt.id]}
+                            onChange={(e: any) => handleShopperValueChange(opt.id, e.currentTarget.checked)}
+                          />
+                        )}
+
+                        {opt.type === "font" && (
+                          <s-select
+                            value={shopperValues[opt.id] || ""}
+                            onChange={(e: any) => handleShopperValueChange(opt.id, e.currentTarget.value)}
+                          >
+                            <s-option value="Arial">Choose typography style...</s-option>
+                            <s-option value="Arial">Arial</s-option>
+                            <s-option value="Times New Roman">Times New Roman</s-option>
+                            {fontAssets.map(f => (
+                              <s-option key={f.id} value={f.name}>{f.name}</s-option>
+                            ))}
+                          </s-select>
+                        )}
+
+                        {opt.type === "clipart" && (
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
+                            {opt.choices?.split(",").map(clipartVal => {
+                              const cleanVal = clipartVal.trim();
+                              const isActive = shopperValues[opt.id] === cleanVal;
+                              return (
+                                <div key={cleanVal} style={{ display: "inline-flex" }}>
+                                  <s-button
+                                    variant={isActive ? "primary" : "secondary"}
+                                    onClick={() => handleShopperValueChange(opt.id, cleanVal)}
+                                  >
+                                    {cleanVal}
+                                  </s-button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {opt.description && (
+                          <p style={{ fontSize: "11px", color: "var(--p-color-text-secondary)", fontStyle: "italic", marginTop: "2px", margin: 0 }}>
+                            {opt.description}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ borderTop: "1px solid var(--p-color-border-muted)", paddingTop: "12px", marginTop: "auto" }}>
+                  <div style={{ display: "flex" }}>
+                    <s-button
+                      variant="primary"
+                      onClick={() => alert("Simulation adds this customized design to cart")}
+                    >
+                      🛒 Add Custom Design to Cart
+                    </s-button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
 
