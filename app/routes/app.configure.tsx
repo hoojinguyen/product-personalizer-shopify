@@ -1,7 +1,8 @@
 import { useLoaderData, useFetcher } from "react-router";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
-import { useEffect, useState } from "react";
+import db from "../db.server";
+import { useEffect, useState, useRef } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
 // The GraphQL query to fetch products and their personalization metafields
@@ -28,7 +29,8 @@ const PRODUCTS_QUERY = `#graphql
 
 // Loader: Fetch products and their current configuration metafields
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session.shop;
 
   // Programmatically verify and create metafield definitions to ensure the app is self-healing
   try {
@@ -62,7 +64,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const responseJson = await response.json();
   const products = responseJson.data?.products?.edges?.map((e: any) => e.node) || [];
 
-  return { products };
+  const assets = await db.asset.findMany({
+    where: { shop }
+  });
+
+  return { products, assets };
 };
 
 // Action: Save dynamic customization config to product metafield
@@ -129,18 +135,28 @@ interface ConditionalRule {
 
 interface CustomizationOption {
   id: string;
-  type: "text" | "select" | "swatch" | "checkbox" | "file";
+  type: "text" | "select" | "swatch" | "checkbox" | "file" | "clipart";
   label: string;
   required: boolean;
   priceUpcharge: number;
   maxChars?: number; // For type === "text"
-  choices?: string; // For type === "select" or "swatch", comma-separated list
+  choices?: string; // For type === "select" or "swatch", comma-separated list or linked asset Set ID
+  choicesType?: "custom" | "global"; // Whether it uses custom list or links to an AssetSet
+  assetSetId?: string; // Links to global colors/options/images AssetSet
   conditionalRules?: ConditionalRule[];
+  
+  // Coordinate positioning attributes (Visual Canvas alignment)
+  canvasX?: number;
+  canvasY?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  canvasRotation?: number;
+  canvasFontSize?: number;
 }
 
 
 export default function ConfigureProductOptions() {
-  const { products } = useLoaderData<typeof loader>();
+  const { products, assets } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
@@ -148,6 +164,192 @@ export default function ConfigureProductOptions() {
   const [enabled, setEnabled] = useState(false);
   const [options, setOptions] = useState<CustomizationOption[]>([]);
   const [upchargeVariantId, setUpchargeVariantId] = useState("");
+  const [showGrid, setShowGrid] = useState(false);
+
+  // Live Canvas Preview states
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [previewText, setPreviewText] = useState("Hello World");
+  const [previewFont, setPreviewFont] = useState("Arial");
+  const [previewColor, setPreviewColor] = useState("#000000");
+
+  // Selection & dragging state variables
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<{
+    isDragging: boolean;
+    isResizing: boolean;
+    resizeHandle: "nw" | "ne" | "sw" | "se" | null;
+    startMouseX: number;
+    startMouseY: number;
+    startCanvasX: number;
+    startCanvasY: number;
+    startWidth: number;
+    startHeight: number;
+    startFontSize: number;
+  }>({
+    isDragging: false,
+    isResizing: false,
+    resizeHandle: null,
+    startMouseX: 0,
+    startMouseY: 0,
+    startCanvasX: 0,
+    startCanvasY: 0,
+    startWidth: 250,
+    startHeight: 250,
+    startFontSize: 48
+  });
+
+  const getCanvasMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 400;
+    const y = ((e.clientY - rect.top) / rect.height) * 400;
+    return { x, y };
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasMousePos(e);
+    const mappedX = x * 2;
+    const mappedY = y * 2;
+
+    if (selectedOptionId) {
+      const opt = options.find(o => o.id === selectedOptionId);
+      if (opt) {
+        const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
+        const w = opt.type === "text" ? ((opt.canvasFontSize ?? 48) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
+        const h = opt.type === "text" ? (opt.canvasFontSize ?? 48) : (opt.canvasHeight ?? 250);
+        
+        const cx = opt.canvasX ?? 400;
+        const cy = opt.canvasY ?? 400;
+
+        const left = cx - w/2;
+        const right = cx + w/2;
+        const top = cy - h/2;
+        const bottom = cy + h/2;
+
+        const threshold = 30; // Logical click coordinate hit boundary
+
+        let handle: "nw" | "ne" | "sw" | "se" | null = null;
+        if (Math.abs(mappedX - left) < threshold && Math.abs(mappedY - top) < threshold) handle = "nw";
+        else if (Math.abs(mappedX - right) < threshold && Math.abs(mappedY - top) < threshold) handle = "ne";
+        else if (Math.abs(mappedX - left) < threshold && Math.abs(mappedY - bottom) < threshold) handle = "sw";
+        else if (Math.abs(mappedX - right) < threshold && Math.abs(mappedY - bottom) < threshold) handle = "se";
+
+        if (handle) {
+          setDragState({
+            isDragging: false,
+            isResizing: true,
+            resizeHandle: handle,
+            startMouseX: mappedX,
+            startMouseY: mappedY,
+            startCanvasX: cx,
+            startCanvasY: cy,
+            startWidth: opt.canvasWidth ?? 250,
+            startHeight: opt.canvasHeight ?? 250,
+            startFontSize: opt.canvasFontSize ?? 48
+          });
+          return;
+        }
+      }
+    }
+
+    for (let i = options.length - 1; i >= 0; i--) {
+      const opt = options[i];
+      const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
+      const w = opt.type === "text" ? ((opt.canvasFontSize ?? 48) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
+      const h = opt.type === "text" ? (opt.canvasFontSize ?? 48) : (opt.canvasHeight ?? 250);
+      
+      const cx = opt.canvasX ?? 400;
+      const cy = opt.canvasY ?? 400;
+
+      if (
+        mappedX >= cx - w/2 &&
+        mappedX <= cx + w/2 &&
+        mappedY >= cy - h/2 &&
+        mappedY <= cy + h/2
+      ) {
+        setSelectedOptionId(opt.id);
+        setDragState({
+          isDragging: true,
+          isResizing: false,
+          resizeHandle: null,
+          startMouseX: mappedX,
+          startMouseY: mappedY,
+          startCanvasX: cx,
+          startCanvasY: cy,
+          startWidth: opt.canvasWidth ?? 250,
+          startHeight: opt.canvasHeight ?? 250,
+          startFontSize: opt.canvasFontSize ?? 48
+        });
+        return;
+      }
+    }
+
+    setSelectedOptionId(null);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!dragState.isDragging && !dragState.isResizing) return;
+    const { x, y } = getCanvasMousePos(e);
+    const mappedX = x * 2;
+    const mappedY = y * 2;
+
+    const opt = options.find(o => o.id === selectedOptionId);
+    if (!opt) return;
+
+    const dx = mappedX - dragState.startMouseX;
+    const dy = mappedY - dragState.startMouseY;
+
+    if (dragState.isDragging) {
+      handleUpdateOption(opt.id, {
+        canvasX: Math.round(dragState.startCanvasX + dx),
+        canvasY: Math.round(dragState.startCanvasY + dy)
+      });
+    } else if (dragState.isResizing && dragState.resizeHandle) {
+      const handle = dragState.resizeHandle;
+      if (opt.type === "text") {
+        const sizeDelta = Math.round(dy * (handle.startsWith("s") ? 1 : -1));
+        const newFontSize = Math.max(12, dragState.startFontSize + sizeDelta);
+        handleUpdateOption(opt.id, {
+          canvasFontSize: newFontSize
+        });
+      } else {
+        const wFactor = handle.endsWith("e") ? 1 : -1;
+        const hFactor = handle.startsWith("s") ? 1 : -1;
+        
+        const newWidth = Math.max(40, dragState.startWidth + Math.round(dx * wFactor));
+        const newHeight = Math.max(40, dragState.startHeight + Math.round(dy * hFactor));
+        
+        handleUpdateOption(opt.id, {
+          canvasWidth: newWidth,
+          canvasHeight: newHeight
+        });
+      }
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setDragState(prev => ({ ...prev, isDragging: false, isResizing: false, resizeHandle: null }));
+  };
+
+  const fontAssets = assets.filter(a => a.type === "FONTS");
+  const colorAssets = assets.filter(a => a.type === "COLORS");
+  const optionAssets = assets.filter(a => a.type === "OPTIONS");
+
+  // Load custom typography @font-face rules on mount so React canvas can render them
+  useEffect(() => {
+    fontAssets.forEach(f => {
+      try {
+        const val = JSON.parse(f.value);
+        const fontName = f.name;
+        const fontUrl = val.url;
+        const format = val.format;
+        const newStyle = document.createElement("style");
+        newStyle.appendChild(document.createTextNode(`@font-face { font-family: "${fontName}"; src: url("${fontUrl}") format("${format}"); }`));
+        document.head.appendChild(newStyle);
+      } catch (e) {}
+    });
+  }, [fontAssets]);
 
   useEffect(() => {
     if (selectedProduct) {
@@ -157,7 +359,6 @@ export default function ConfigureProductOptions() {
           const config = JSON.parse(configVal);
           
           if (config.options) {
-            // New schema format
             setOptions(config.options);
             setEnabled(config.enabled ?? false);
             setUpchargeVariantId(config.upchargeVariantId || "");
@@ -171,7 +372,13 @@ export default function ConfigureProductOptions() {
                 label: "Custom Engraving Text",
                 required: true,
                 priceUpcharge: config.fee ?? 0.0,
-                maxChars: config.maxChars ?? 50
+                maxChars: config.maxChars ?? 50,
+                canvasX: 400,
+                canvasY: 400,
+                canvasFontSize: 48,
+                canvasWidth: 250,
+                canvasHeight: 250,
+                canvasRotation: 0
               });
               if (config.fontOptions && config.fontOptions.length > 0) {
                 migrated.push({
@@ -215,7 +422,13 @@ export default function ConfigureProductOptions() {
             label: "Engraving Text",
             required: true,
             priceUpcharge: 0.0,
-            maxChars: 30
+            maxChars: 30,
+            canvasX: 400,
+            canvasY: 400,
+            canvasFontSize: 48,
+            canvasWidth: 250,
+            canvasHeight: 250,
+            canvasRotation: 0
           }
         ]);
       }
@@ -236,6 +449,12 @@ export default function ConfigureProductOptions() {
       required: false,
       priceUpcharge: 0.0,
       maxChars: 50,
+      canvasX: 400,
+      canvasY: 400,
+      canvasFontSize: 48,
+      canvasWidth: 250,
+      canvasHeight: 250,
+      canvasRotation: 0,
       conditionalRules: []
     };
     setOptions([...options, newOption]);
@@ -253,6 +472,9 @@ export default function ConfigureProductOptions() {
         if (updates.type && updates.type !== o.type) {
           if (updates.type === "text") {
             updated.maxChars = 50;
+            updated.canvasX = 400;
+            updated.canvasY = 400;
+            updated.canvasFontSize = 48;
             delete updated.choices;
           } else if (updates.type === "select") {
             updated.choices = "Option A, Option B, Option C";
@@ -264,6 +486,11 @@ export default function ConfigureProductOptions() {
             delete updated.maxChars;
             delete updated.choices;
           } else if (updates.type === "file") {
+            updated.canvasX = 400;
+            updated.canvasY = 400;
+            updated.canvasWidth = 250;
+            updated.canvasHeight = 250;
+            updated.canvasRotation = 0;
             delete updated.maxChars;
             delete updated.choices;
           }
@@ -273,7 +500,159 @@ export default function ConfigureProductOptions() {
       return o;
     }));
   };
+  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
 
+  useEffect(() => {
+    if (selectedProduct?.featuredImage?.url) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = selectedProduct.featuredImage.url;
+      img.onload = () => setBgImage(img);
+    } else {
+      setBgImage(null);
+    }
+  }, [selectedProduct]);
+
+  // WYSIWYG Coordinate-Aware Multi-Layer Canvas Rendering matching ADR 0001
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cx = canvas.getContext("2d");
+    if (!cx) return;
+
+    canvas.width = 400;
+    canvas.height = 400;
+
+    cx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw background product image or white container
+    if (bgImage) {
+      cx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+      // Soft semi-transparent white screen overlay for personalization contrast
+      cx.fillStyle = "rgba(255, 255, 255, 0.35)";
+      cx.fillRect(0, 0, canvas.width, canvas.height);
+    } else {
+      cx.fillStyle = "#ffffff";
+      cx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Draw coordinate bounds for merchant visual alignment
+    cx.strokeStyle = "rgba(0,128,96,0.15)";
+    cx.lineWidth = 1;
+    cx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
+
+    if (showGrid) {
+      cx.strokeStyle = "rgba(0, 128, 96, 0.08)";
+      cx.lineWidth = 0.5;
+      // Vertical grid lines
+      for (let x = 40; x < canvas.width; x += 40) {
+        cx.beginPath();
+        cx.moveTo(x, 0);
+        cx.lineTo(x, canvas.height);
+        cx.stroke();
+      }
+      // Horizontal grid lines
+      for (let y = 40; y < canvas.height; y += 40) {
+        cx.beginPath();
+        cx.moveTo(0, y);
+        cx.lineTo(canvas.width, y);
+        cx.stroke();
+      }
+    }
+
+    // Render option layers sequentially
+    options.forEach((opt, idx) => {
+      cx.save();
+      
+      const x = (opt.canvasX ?? 400) / 2;
+      const y = (opt.canvasY ?? 400) / 2;
+      
+      // Translate to this layer's coordinates
+      cx.translate(x, y);
+
+      if (opt.canvasRotation) {
+        cx.rotate((opt.canvasRotation * Math.PI) / 180);
+      }
+
+      let renderW = 0;
+      let renderH = 0;
+
+      if (opt.type === "text") {
+        cx.fillStyle = opt.id === "opt-default-text" ? previewColor : "#1a1a1a";
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        const fontSize = (opt.canvasFontSize ?? 48) / 2;
+        cx.font = `bold ${fontSize}px "${opt.id === "opt-default-text" ? previewFont : "Arial"}", Arial, sans-serif`;
+        
+        const textVal = opt.id === "opt-default-text" ? (previewText || opt.label || "Custom Text") : (opt.label || "Custom Text");
+        cx.fillText(textVal, 0, 0);
+
+        renderW = fontSize * textVal.length * 0.5;
+        renderH = fontSize;
+      } else if (opt.type === "clipart") {
+        cx.fillStyle = "rgba(0, 128, 96, 0.08)";
+        cx.strokeStyle = "#008060";
+        cx.lineWidth = 1.5;
+        renderW = (opt.canvasWidth ?? 250) / 2;
+        renderH = (opt.canvasHeight ?? 250) / 2;
+        cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+        cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
+        
+        cx.fillStyle = "#008060";
+        cx.font = "bold 10px Arial";
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        cx.fillText(`🖼️ Clipart: ${opt.label}`, 0, 0);
+      } else if (opt.type === "file") {
+        cx.fillStyle = "rgba(44, 62, 80, 0.08)";
+        cx.strokeStyle = "#2c3e50";
+        cx.lineWidth = 1.5;
+        renderW = (opt.canvasWidth ?? 250) / 2;
+        renderH = (opt.canvasHeight ?? 250) / 2;
+        cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+        cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
+        
+        cx.fillStyle = "#2c3e50";
+        cx.font = "bold 10px Arial";
+        cx.textAlign = "center";
+        cx.textBaseline = "middle";
+        cx.fillText(`📸 Upload: ${opt.label}`, 0, 0);
+      }
+
+      // Draw bounding outlines if the option is currently selected
+      if (opt.id === selectedOptionId) {
+        cx.strokeStyle = "#008060";
+        cx.lineWidth = 1.5;
+        cx.setLineDash([4, 4]);
+        cx.strokeRect(-renderW/2 - 4, -renderH/2 - 4, renderW + 8, renderH + 8);
+        cx.setLineDash([]);
+
+        // Render resize handles (6px boxes) at the four corners
+        cx.fillStyle = "#ffffff";
+        cx.strokeStyle = "#008060";
+        cx.lineWidth = 1.2;
+        const handleSize = 6;
+        const corners = [
+          { x: -renderW/2 - 4, y: -renderH/2 - 4 }, // Top-Left
+          { x: renderW/2 + 4, y: -renderH/2 - 4 },  // Top-Right
+          { x: -renderW/2 - 4, y: renderH/2 + 4 },  // Bottom-Left
+          { x: renderW/2 + 4, y: renderH/2 + 4 }    // Bottom-Right
+        ];
+        corners.forEach(corner => {
+          cx.fillRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+          cx.strokeRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+        });
+      }
+
+      cx.restore();
+    });
+
+    // Draw tiny overlay tag indicating print frame
+    cx.fillStyle = "#6d7175";
+    cx.font = "bold 9px monospace";
+    cx.textAlign = "right";
+    cx.fillText("400x400 px mockup", canvas.width - 15, canvas.height - 15);
+  }, [previewText, previewFont, previewColor, options, selectedOptionId, bgImage, showGrid]);
   const handleSave = () => {
     if (!selectedProduct) return;
     fetcher.submit(
@@ -359,8 +738,13 @@ export default function ConfigureProductOptions() {
                   </div>
 
                   <hr style={{ border: 0, borderTop: "1px solid #e1e3e5", margin: "8px 0" }} />
-                  {/* Enable Switch */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
+                  
+                  <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr", gap: "24px", alignItems: "start" }}>
+                    {/* Left Column: Form Controls Panel */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                      
+                      {/* Enable Switch */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
                     <input
                       type="checkbox"
                       id="enable-checkbox"
@@ -414,7 +798,7 @@ export default function ConfigureProductOptions() {
 
                       {options.length === 0 ? (
                         <div style={{ padding: "30px", border: "1px dashed #babfc3", borderRadius: "8px", textAlign: "center", color: "#6d7175" }}>
-                          No options created yet. Click "Add Option" to get started.
+                          No options created yet. Click &quot;Add Option&quot; to get started.
                         </div>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -646,6 +1030,94 @@ export default function ConfigureProductOptions() {
                       )}
                     </div>
                   )}
+                    </div> {/* Close Left Column */}
+
+                    {/* Right Column: Visual Preview Canvas */}
+                    <div style={{ position: "sticky", top: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                      <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
+                        <s-stack direction="block" gap={"small" as any}>
+                          <span style={{ fontSize: "15px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>🎨 WYSIWYG Visual Canvas</span>
+                          <s-paragraph>Drag, scale, and align your custom engraving coordinates directly on the preview below.</s-paragraph>
+                          
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", marginTop: "8px" }}>
+                            <canvas
+                              ref={canvasRef}
+                              onMouseDown={handleCanvasMouseDown}
+                              onMouseMove={handleCanvasMouseMove}
+                              onMouseUp={handleCanvasMouseUp}
+                              onMouseLeave={handleCanvasMouseUp}
+                              style={{
+                                width: "100%",
+                                maxWidth: "240px",
+                                height: "240px",
+                                border: "1px solid #babfc3",
+                                borderRadius: "8px",
+                                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                                cursor: dragState.isDragging ? "grabbing" : dragState.isResizing ? "nwse-resize" : "pointer"
+                              }}
+                            />
+                            
+                            {/* Grid Line Toggle */}
+                            <div style={{ display: "flex", gap: "10px", width: "100%", background: "#f9fafb", padding: "10px", borderRadius: "6px", alignItems: "center" }}>
+                              <input
+                                type="checkbox"
+                                id="show-grid-checkbox"
+                                checked={showGrid}
+                                onChange={(e) => setShowGrid(e.target.checked)}
+                                style={{ cursor: "pointer", width: "15px", height: "15px" }}
+                              />
+                              <label htmlFor="show-grid-checkbox" style={{ fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "#2b303a" }}>
+                                📏 Show Alignment Grid
+                              </label>
+                            </div>
+
+                            {/* Visual testing inputs */}
+                            <div style={{ width: "100%", background: "#f9fafb", padding: "10px", borderRadius: "6px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                              <span style={{ fontWeight: 700, fontSize: "11px", color: "#6d7175" }}>Live Canvas Preview Tester</span>
+                              <div>
+                                <label style={{ display: "block", fontSize: "10px", color: "#2b303a", marginBottom: "2px" }}>Sample Input Text</label>
+                                <input
+                                  type="text"
+                                  value={previewText}
+                                  onChange={(e) => setPreviewText(e.target.value)}
+                                  style={{ width: "100%", padding: "5px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
+                                />
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "10px", color: "#2b303a", marginBottom: "2px" }}>Font Style</label>
+                                  <select
+                                    value={previewFont}
+                                    onChange={(e) => setPreviewFont(e.target.value)}
+                                    style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
+                                  >
+                                    <option value="Arial">Arial</option>
+                                    <option value="Times New Roman">Times New Roman</option>
+                                    {fontAssets.map(f => (
+                                      <option key={f.id} value={f.name}>{f.name}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label style={{ display: "block", fontSize: "10px", color: "#2b303a", marginBottom: "2px" }}>Color Swatch</label>
+                                  <select
+                                    value={previewColor}
+                                    onChange={(e) => setPreviewColor(e.target.value)}
+                                    style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
+                                  >
+                                    <option value="#000000">Black</option>
+                                    <option value="#E63946">Crimson</option>
+                                    <option value="#457B9D">Slate Blue</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </s-stack>
+                      </s-box>
+                    </div> {/* Close Right Column */}
+                    
+                  </div> {/* Close Grid Layout */}
 
                   <div style={{ marginTop: "24px" }}>
                     <s-button onClick={handleSave} variant="primary" {...(fetcher.state === "submitting" ? { loading: true } : {})}>

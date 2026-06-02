@@ -478,16 +478,16 @@ export default function AssetsDirectory() {
               style={{
                 background: "none",
                 border: "none",
-                padding: "10px 4px",
+                padding: "12px 6px",
                 fontSize: "14px",
                 fontWeight: 600,
                 color: activeTab === tab ? "#008060" : "#6d7175",
                 borderBottom: activeTab === tab ? "3px solid #008060" : "3px solid transparent",
                 cursor: "pointer",
-                textTransform: "capitalize"
+                transition: "all 0.2s ease"
               }}
             >
-              {tab === "fonts" ? " Fonts Set" : tab === "colors" ? " Reusable Colors" : tab === "images" ? "🖼️ Clipart Sets" : " Reusable Options"}
+              {tab === "fonts" ? "🔤 Font Sets" : tab === "colors" ? "🎨 Color Palettes" : tab === "images" ? "🖼️ Clipart Graphics" : "📋 Choice Options"}
             </button>
           ))}
         </div>

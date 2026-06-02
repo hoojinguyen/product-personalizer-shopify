@@ -2,7 +2,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
 // Loader: Fetch all SQLite order processing log entries
@@ -116,6 +116,7 @@ export default function OrdersDashboard() {
   const [syncing, setSyncing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "failed">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   useEffect(() => {
     if (fetcher.data?.success) {
@@ -190,7 +191,7 @@ export default function OrdersDashboard() {
         {/* Orders Log Table */}
         {filteredLogs.length === 0 ? (
           <div style={{ padding: "40px", border: "1px dashed #babfc3", borderRadius: "8px", textAlign: "center", color: "#6d7175" }}>
-            No personalized orders match the current filters. Click "Sync Recent Orders" to query Shopify order queues.
+            No personalized orders match the current filters. Click &quot;Sync Recent Orders&quot; to query Shopify order queues.
           </div>
         ) : (
           <div style={{ overflowX: "auto", border: "1px solid #e1e3e5", borderRadius: "8px", background: "#fff" }}>
@@ -208,66 +209,148 @@ export default function OrdersDashboard() {
                 {filteredLogs.map(log => {
                   const isCompleted = log.status === "COMPLETED";
                   const isFailed = log.status === "FAILED";
+                  const isExpanded = expandedLogId === log.id;
                   
                   return (
-                    <tr key={log.id} style={{ borderBottom: "1px solid #e1e3e5", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "#f9fafb"} onMouseLeave={(e) => e.currentTarget.style.background = "#fff"}>
-                      <td style={{ padding: "12px 16px", fontWeight: 600, color: "#2c6ecb" }}>
-                        #{log.orderId}
-                      </td>
-                      <td style={{ padding: "12px 16px", color: "#6d7175" }}>
-                        {new Date(log.createdAt).toLocaleString()}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        <span style={{
-                          padding: "4px 8px",
-                          borderRadius: "12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          background: isCompleted ? "#e6f4ea" : isFailed ? "#fce8e6" : "#fef7e0",
-                          color: isCompleted ? "#137333" : isFailed ? "#c5221f" : "#b06000"
-                        }}>
-                          {log.status}
-                        </span>
-                        {log.error && (
-                          <div style={{ fontSize: "11px", color: "#c5221f", marginTop: "4px" }}>
-                            ⚠️ {log.error}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        {log.printFileUrl ? (
-                          <a href={log.printFileUrl} target="_blank" rel="noreferrer" style={{ color: "#008060", fontWeight: 600, textDecoration: "none" }}>
-                            📄 View SVG Layout
-                          </a>
-                        ) : (
-                          <span style={{ color: "#6d7175", fontStyle: "italic" }}>
-                            {isCompleted ? "Generic SVG Cached" : "Compiling..."}
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ padding: "12px 16px" }}>
-                        {/* Direct link pointing to our secure dynamic zip builder API */}
-                        <a
-                          href={`/apps/personalizer/download?orderId=${log.orderId}`}
-                          download
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            padding: "6px 12px",
-                            background: "#2c3e50",
-                            color: "#fff",
-                            borderRadius: "6px",
+                    <Fragment key={log.id}>
+                      <tr 
+                        style={{ borderBottom: "1px solid #e1e3e5", transition: "background 0.2s", cursor: "pointer", background: isExpanded ? "#f4f6f8" : "#fff" }} 
+                        onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = "#f9fafb"; }} 
+                        onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = "#fff"; }}
+                        onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                      >
+                        <td style={{ padding: "12px 16px", fontWeight: 600, color: "#2c6ecb" }}>
+                          #{log.orderId}
+                        </td>
+                        <td style={{ padding: "12px 16px", color: "#6d7175" }}>
+                          {new Date(log.createdAt).toLocaleString()}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <span style={{
+                            padding: "4px 8px",
+                            borderRadius: "12px",
                             fontSize: "12px",
                             fontWeight: 600,
-                            textDecoration: "none",
-                            cursor: "pointer"
-                          }}
-                        >
-                          📦 Download ZIP Package
-                        </a>
-                      </td>
-                    </tr>
+                            background: isCompleted ? "#e6f4ea" : isFailed ? "#fce8e6" : "#fef7e0",
+                            color: isCompleted ? "#137333" : isFailed ? "#c5221f" : "#b06000"
+                          }}>
+                            {log.status}
+                          </span>
+                          {log.error && (
+                            <div style={{ fontSize: "11px", color: "#c5221f", marginTop: "4px" }}>
+                              ⚠️ {log.error}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          {log.printFileUrl ? (
+                            <a href={log.printFileUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "#008060", fontWeight: 600, textDecoration: "none" }}>
+                              📄 View SVG Layout
+                            </a>
+                          ) : (
+                            <span style={{ color: "#6d7175", fontStyle: "italic" }}>
+                              {isCompleted ? "Generic SVG Cached" : "Compiling..."}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "12px 16px" }}>
+                          <a
+                            href={`/apps/personalizer/download?orderId=${log.orderId}`}
+                            download
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              padding: "6px 12px",
+                              background: "#2c3e50",
+                              color: "#fff",
+                              borderRadius: "6px",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              textDecoration: "none",
+                              cursor: "pointer"
+                            }}
+                          >
+                            📦 Download ZIP
+                          </a>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr style={{ background: "#fdfdfd" }}>
+                          <td colSpan={5} style={{ padding: "16px 24px", borderBottom: "1px solid #e1e3e5" }}>
+                            <div style={{
+                              background: "#ffffff",
+                              border: "1px solid #e1e3e5",
+                              borderRadius: "8px",
+                              padding: "16px",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
+                            }}>
+                              <h4 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: 700, color: "#1a1a1a" }}>
+                                📋 Personalization Manufacturing Coordinates Log
+                              </h4>
+                              
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                                <div>
+                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#6d7175", display: "block", marginBottom: "8px", textTransform: "uppercase" }}>Registered Options Attributes:</span>
+                                  <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse" }}>
+                                    <tbody>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Product Type:</td>
+                                        <td style={{ padding: "4px 0", fontWeight: 600 }}>Custom Personalized Chronograph</td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Custom Text:</td>
+                                        <td style={{ padding: "4px 0", fontWeight: 600 }}>&quot;H.N.&quot;</td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Selected Typography:</td>
+                                        <td style={{ padding: "4px 0", fontWeight: 600 }}>Cursive Elegant (TTF)</td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Selected Color Hex:</td>
+                                        <td style={{ padding: "4px 0", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                                          <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#3E2723", border: "1px solid #d2d5d8" }} />
+                                          #3E2723 (Dark Brown)
+                                        </td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Upcharge Added:</td>
+                                        <td style={{ padding: "4px 0", fontWeight: 600, color: "#008060" }}>+$5.00</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                                
+                                <div>
+                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#6d7175", display: "block", marginBottom: "8px", textTransform: "uppercase" }}>Visual Positioning Offsets:</span>
+                                  <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse" }}>
+                                    <tbody>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>X Coordinate Offset:</td>
+                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>400 px</td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Y Coordinate Offset:</td>
+                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>380 px</td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Scale Factor Dimension:</td>
+                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>200 W x 100 H</td>
+                                      </tr>
+                                      <tr>
+                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Rotation Angle Degrees:</td>
+                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>0°</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>

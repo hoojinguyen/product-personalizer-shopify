@@ -228,6 +228,166 @@ export default function TemplatesPanel() {
   const [previewFont, setPreviewFont] = useState("Arial");
   const [previewColor, setPreviewColor] = useState("#000000");
 
+  // Selection & dragging state variables
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<{
+    isDragging: boolean;
+    isResizing: boolean;
+    resizeHandle: "nw" | "ne" | "sw" | "se" | null;
+    startMouseX: number;
+    startMouseY: number;
+    startCanvasX: number;
+    startCanvasY: number;
+    startWidth: number;
+    startHeight: number;
+    startFontSize: number;
+  }>({
+    isDragging: false,
+    isResizing: false,
+    resizeHandle: null,
+    startMouseX: 0,
+    startMouseY: 0,
+    startCanvasX: 0,
+    startCanvasY: 0,
+    startWidth: 250,
+    startHeight: 250,
+    startFontSize: 48
+  });
+
+  const getCanvasMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 400;
+    const y = ((e.clientY - rect.top) / rect.height) * 400;
+    return { x, y };
+  };
+
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { x, y } = getCanvasMousePos(e);
+    const mappedX = x * 2;
+    const mappedY = y * 2;
+
+    if (selectedOptionId) {
+      const opt = options.find(o => o.id === selectedOptionId);
+      if (opt) {
+        const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
+        const w = opt.type === "text" ? ((opt.canvasFontSize ?? 48) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
+        const h = opt.type === "text" ? (opt.canvasFontSize ?? 48) : (opt.canvasHeight ?? 250);
+        
+        const cx = opt.canvasX ?? 400;
+        const cy = opt.canvasY ?? 400;
+
+        const left = cx - w/2;
+        const right = cx + w/2;
+        const top = cy - h/2;
+        const bottom = cy + h/2;
+
+        const threshold = 30; // Logical click coordinate hit boundary
+
+        let handle: "nw" | "ne" | "sw" | "se" | null = null;
+        if (Math.abs(mappedX - left) < threshold && Math.abs(mappedY - top) < threshold) handle = "nw";
+        else if (Math.abs(mappedX - right) < threshold && Math.abs(mappedY - top) < threshold) handle = "ne";
+        else if (Math.abs(mappedX - left) < threshold && Math.abs(mappedY - bottom) < threshold) handle = "sw";
+        else if (Math.abs(mappedX - right) < threshold && Math.abs(mappedY - bottom) < threshold) handle = "se";
+
+        if (handle) {
+          setDragState({
+            isDragging: false,
+            isResizing: true,
+            resizeHandle: handle,
+            startMouseX: mappedX,
+            startMouseY: mappedY,
+            startCanvasX: cx,
+            startCanvasY: cy,
+            startWidth: opt.canvasWidth ?? 250,
+            startHeight: opt.canvasHeight ?? 250,
+            startFontSize: opt.canvasFontSize ?? 48
+          });
+          return;
+        }
+      }
+    }
+
+    for (let i = options.length - 1; i >= 0; i--) {
+      const opt = options[i];
+      const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
+      const w = opt.type === "text" ? ((opt.canvasFontSize ?? 48) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
+      const h = opt.type === "text" ? (opt.canvasFontSize ?? 48) : (opt.canvasHeight ?? 250);
+      
+      const cx = opt.canvasX ?? 400;
+      const cy = opt.canvasY ?? 400;
+
+      if (
+        mappedX >= cx - w/2 &&
+        mappedX <= cx + w/2 &&
+        mappedY >= cy - h/2 &&
+        mappedY <= cy + h/2
+      ) {
+        setSelectedOptionId(opt.id);
+        setDragState({
+          isDragging: true,
+          isResizing: false,
+          resizeHandle: null,
+          startMouseX: mappedX,
+          startMouseY: mappedY,
+          startCanvasX: cx,
+          startCanvasY: cy,
+          startWidth: opt.canvasWidth ?? 250,
+          startHeight: opt.canvasHeight ?? 250,
+          startFontSize: opt.canvasFontSize ?? 48
+        });
+        return;
+      }
+    }
+
+    setSelectedOptionId(null);
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!dragState.isDragging && !dragState.isResizing) return;
+    const { x, y } = getCanvasMousePos(e);
+    const mappedX = x * 2;
+    const mappedY = y * 2;
+
+    const opt = options.find(o => o.id === selectedOptionId);
+    if (!opt) return;
+
+    const dx = mappedX - dragState.startMouseX;
+    const dy = mappedY - dragState.startMouseY;
+
+    if (dragState.isDragging) {
+      handleUpdateOption(opt.id, {
+        canvasX: Math.round(dragState.startCanvasX + dx),
+        canvasY: Math.round(dragState.startCanvasY + dy)
+      });
+    } else if (dragState.isResizing && dragState.resizeHandle) {
+      const handle = dragState.resizeHandle;
+      if (opt.type === "text") {
+        const sizeDelta = Math.round(dy * (handle.startsWith("s") ? 1 : -1));
+        const newFontSize = Math.max(12, dragState.startFontSize + sizeDelta);
+        handleUpdateOption(opt.id, {
+          canvasFontSize: newFontSize
+        });
+      } else {
+        const wFactor = handle.endsWith("e") ? 1 : -1;
+        const hFactor = handle.startsWith("s") ? 1 : -1;
+        
+        const newWidth = Math.max(40, dragState.startWidth + Math.round(dx * wFactor));
+        const newHeight = Math.max(40, dragState.startHeight + Math.round(dy * hFactor));
+        
+        handleUpdateOption(opt.id, {
+          canvasWidth: newWidth,
+          canvasHeight: newHeight
+        });
+      }
+    }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setDragState(prev => ({ ...prev, isDragging: false, isResizing: false, resizeHandle: null }));
+  };
+
   const fontAssets = assets.filter(a => a.type === "FONTS");
   const colorAssets = assets.filter(a => a.type === "COLORS");
   const optionAssets = assets.filter(a => a.type === "OPTIONS");
@@ -338,21 +498,29 @@ export default function TemplatesPanel() {
         cx.rotate((opt.canvasRotation * Math.PI) / 180);
       }
 
+      let renderW = 0;
+      let renderH = 0;
+
       if (opt.type === "text") {
         cx.fillStyle = opt.id === "opt-default-text" ? previewColor : "#1a1a1a";
         cx.textAlign = "center";
         cx.textBaseline = "middle";
         const fontSize = (opt.canvasFontSize ?? 48) / 2;
         cx.font = `bold ${fontSize}px "${opt.id === "opt-default-text" ? previewFont : "Arial"}", Arial, sans-serif`;
-        cx.fillText(previewText || opt.label || "Custom Text", 0, 0);
+        
+        const textVal = opt.id === "opt-default-text" ? (previewText || opt.label || "Custom Text") : (opt.label || "Custom Text");
+        cx.fillText(textVal, 0, 0);
+
+        renderW = fontSize * textVal.length * 0.5;
+        renderH = fontSize;
       } else if (opt.type === "clipart") {
         cx.fillStyle = "rgba(0, 128, 96, 0.08)";
         cx.strokeStyle = "#008060";
         cx.lineWidth = 1.5;
-        const w = (opt.canvasWidth ?? 250) / 2;
-        const h = (opt.canvasHeight ?? 250) / 2;
-        cx.fillRect(-w/2, -h/2, w, h);
-        cx.strokeRect(-w/2, -h/2, w, h);
+        renderW = (opt.canvasWidth ?? 250) / 2;
+        renderH = (opt.canvasHeight ?? 250) / 2;
+        cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+        cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
         
         cx.fillStyle = "#008060";
         cx.font = "bold 10px Arial";
@@ -363,10 +531,10 @@ export default function TemplatesPanel() {
         cx.fillStyle = "rgba(44, 62, 80, 0.08)";
         cx.strokeStyle = "#2c3e50";
         cx.lineWidth = 1.5;
-        const w = (opt.canvasWidth ?? 250) / 2;
-        const h = (opt.canvasHeight ?? 250) / 2;
-        cx.fillRect(-w/2, -h/2, w, h);
-        cx.strokeRect(-w/2, -h/2, w, h);
+        renderW = (opt.canvasWidth ?? 250) / 2;
+        renderH = (opt.canvasHeight ?? 250) / 2;
+        cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+        cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
         
         cx.fillStyle = "#2c3e50";
         cx.font = "bold 10px Arial";
@@ -374,6 +542,32 @@ export default function TemplatesPanel() {
         cx.textBaseline = "middle";
         cx.fillText(`📸 Upload: ${opt.label}`, 0, 0);
       }
+
+      // Draw bounding outlines if the option is currently selected
+      if (opt.id === selectedOptionId) {
+        cx.strokeStyle = "#008060";
+        cx.lineWidth = 1.5;
+        cx.setLineDash([4, 4]);
+        cx.strokeRect(-renderW/2 - 4, -renderH/2 - 4, renderW + 8, renderH + 8);
+        cx.setLineDash([]);
+
+        // Render resize handles (6px boxes) at the four corners
+        cx.fillStyle = "#ffffff";
+        cx.strokeStyle = "#008060";
+        cx.lineWidth = 1.2;
+        const handleSize = 6;
+        const corners = [
+          { x: -renderW/2 - 4, y: -renderH/2 - 4 }, // Top-Left
+          { x: renderW/2 + 4, y: -renderH/2 - 4 },  // Top-Right
+          { x: -renderW/2 - 4, y: renderH/2 + 4 },  // Bottom-Left
+          { x: renderW/2 + 4, y: renderH/2 + 4 }    // Bottom-Right
+        ];
+        corners.forEach(corner => {
+          cx.fillRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+          cx.strokeRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+        });
+      }
+
       cx.restore();
     });
 
@@ -382,7 +576,7 @@ export default function TemplatesPanel() {
     cx.font = "bold 9px monospace";
     cx.textAlign = "right";
     cx.fillText("400x400 px mockup", canvas.width - 15, canvas.height - 15);
-  }, [previewText, previewFont, previewColor, options]);
+  }, [previewText, previewFont, previewColor, options, selectedOptionId]);
 
   useEffect(() => {
     if (fetcher.data?.success) {
@@ -541,6 +735,126 @@ export default function TemplatesPanel() {
             </button>
           )}
         </div>
+
+        {/* System Import shortcuts */}
+        {!selectedTemplate && (
+          <div style={{
+            background: "hsla(210, 20%, 97%, 0.8)",
+            border: "1px solid #e1e3e5",
+            borderRadius: "12px",
+            padding: "16px",
+            marginBottom: "24px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px"
+          }}>
+            <span style={{ fontWeight: 700, fontSize: "14px", color: "#2c3e50" }}>🚀 Quick Start: Import Built-in System Blueprints</span>
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setTemplateName("Chronos Chronograph watch");
+                  setHeading("Custom Watch Monogram & Dial Engraving");
+                  setLayoutMode("tabs");
+                  setOptions([
+                    {
+                      id: "watch-face-text",
+                      type: "text",
+                      label: "Watch Dial Engraving Initials",
+                      required: true,
+                      priceUpcharge: 5.0,
+                      maxChars: 4,
+                      canvasX: 400,
+                      canvasY: 380,
+                      canvasFontSize: 30,
+                      canvasWidth: 200,
+                      canvasHeight: 100,
+                      canvasRotation: 0
+                    },
+                    {
+                      id: "watch-band-color",
+                      type: "swatch",
+                      label: "Leather Strap Color",
+                      required: true,
+                      priceUpcharge: 0,
+                      choices: "#000000, #3E2723, #1A237E"
+                    }
+                  ]);
+                  shopify.toast.show("Pre-populated Chronos Watch layout!");
+                }}
+                style={{ padding: "8px 14px", background: "#ffffff", border: "1px solid #babfc3", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
+              >
+                ⌚ Chronos Watch Series
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTemplateName("Neon Sign builder");
+                  setHeading("Build Your Custom Neon Glow Sign");
+                  setLayoutMode("stacked");
+                  setOptions([
+                    {
+                      id: "neon-glow-text",
+                      type: "text",
+                      label: "Neon Text Content",
+                      required: true,
+                      priceUpcharge: 10.0,
+                      maxChars: 15,
+                      canvasX: 400,
+                      canvasY: 400,
+                      canvasFontSize: 60,
+                      canvasWidth: 350,
+                      canvasHeight: 150,
+                      canvasRotation: 0
+                    },
+                    {
+                      id: "neon-glow-color",
+                      type: "swatch",
+                      label: "Glow Color Swatch",
+                      required: true,
+                      priceUpcharge: 0,
+                      choices: "#FF007F, #00FFFF, #39FF14, #FFD700"
+                    }
+                  ]);
+                  shopify.toast.show("Pre-populated Neon Sign layout!");
+                }}
+                style={{ padding: "8px 14px", background: "#ffffff", border: "1px solid #babfc3", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
+              >
+                💡 Create Your Neon
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTemplateName("Pillow Monogram blueprint");
+                  setHeading("Custom Monogram Pillow");
+                  setLayoutMode("stacked");
+                  setOptions([
+                    {
+                      id: "pillow-monogram-initials",
+                      type: "text",
+                      label: "Monogram Initials (3 letters)",
+                      required: true,
+                      priceUpcharge: 3.5,
+                      maxChars: 3,
+                      canvasX: 400,
+                      canvasY: 400,
+                      canvasFontSize: 80,
+                      canvasWidth: 200,
+                      canvasHeight: 200,
+                      canvasRotation: 0
+                    }
+                  ]);
+                  shopify.toast.show("Pre-populated Pillow Monogram layout!");
+                }}
+                style={{ padding: "8px 14px", background: "#ffffff", border: "1px solid #babfc3", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
+              >
+                🛋️ Monogram Pillow Layout
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Master Workspace Editor Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px", marginTop: "24px" }}>
@@ -879,13 +1193,18 @@ export default function TemplatesPanel() {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
                 <canvas
                   ref={canvasRef}
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onMouseLeave={handleCanvasMouseUp}
                   style={{
                     width: "100%",
                     maxWidth: "280px",
                     height: "280px",
                     border: "1px solid #babfc3",
                     borderRadius: "8px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.05)"
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+                    cursor: dragState.isDragging ? "grabbing" : dragState.isResizing ? "nwse-resize" : "pointer"
                   }}
                 />
 
