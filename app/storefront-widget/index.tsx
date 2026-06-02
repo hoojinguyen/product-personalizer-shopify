@@ -1,30 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
-
-interface ConditionalRule {
-  fieldId: string;
-  operator: "equals" | "not_equals" | "checked" | "unchecked";
-  value: string;
-}
-
-interface CustomizationOption {
-  id: string;
-  type: "text" | "select" | "swatch" | "checkbox" | "file" | "clipart";
-  label: string;
-  required: boolean;
-  priceUpcharge: number;
-  maxChars?: number;
-  choices?: string;
-  conditionalRules?: ConditionalRule[];
-
-  // Coordinate positioning attributes (Phase 3 parity features)
-  canvasX?: number;
-  canvasY?: number;
-  canvasWidth?: number;
-  canvasHeight?: number;
-  canvasRotation?: number;
-  canvasFontSize?: number;
-}
+import { 
+  CustomizationOption, 
+  isOptionVisible, 
+  calculateTotalUpcharges 
+} from "../utils/configEngine";
+import { drawPersonalizerCanvas } from "../utils/canvasRenderer";
 
 interface CustomizerConfig {
   enabled: boolean;
@@ -186,123 +167,32 @@ export function StorefrontCustomizer({
     }
   };
 
-  // Evaluate dynamic conditional visibility for a given option
-  const isOptionVisible = (opt: CustomizationOption): boolean => {
-    if (!opt.conditionalRules || opt.conditionalRules.length === 0) return true;
-
-    let visible = true;
-    opt.conditionalRules.forEach((rule) => {
-      const parentValue = fieldValues[rule.fieldId] || "";
-      if (rule.operator === "equals" && parentValue !== rule.value) visible = false;
-      else if (rule.operator === "not_equals" && parentValue === rule.value) visible = false;
-      else if (rule.operator === "checked" && !parentValue) visible = false;
-      else if (rule.operator === "unchecked" && parentValue) visible = false;
-    });
-    return visible;
+  const isStorefrontOptionVisible = (opt: CustomizationOption) => {
+    return isOptionVisible(opt, fieldValues);
   };
 
-  const visibleOptions = options.filter(isOptionVisible);
-
-  // Dynamic Typography Font Preloading matching ADR 0003
-  const loadTypography = async (fontName: string) => {
-    if (!fontName || fontName === "Arial" || fontName === "Georgia") return;
-    try {
-      await document.fonts.load(`16px "${fontName}"`);
-    } catch (e) {
-      console.warn("Font loading error inside storefront canvas:", e);
-    }
-  };
+  const visibleOptions = options.filter(isStorefrontOptionVisible);
 
   // Live Multi-Layer Canvas Rendering matches ADR 0001
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
-    canvas.width = 800;
-    canvas.height = 800;
-
-    // Clear and draw background
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (bgImage) {
-      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-    } else {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    // Render each visible layer in sequence (preserving layout hierarchy)
-    visibleOptions.forEach((opt) => {
-      ctx.save();
-      
-      const x = opt.canvasX ?? 400;
-      const y = opt.canvasY ?? 400;
-      
-      ctx.translate(x, y);
-
-      if (opt.canvasRotation) {
-        ctx.rotate((opt.canvasRotation * Math.PI) / 180);
-      }
-
-      const val = fieldValues[opt.id];
-
-      if (opt.type === "text" && val && val.trim() !== "") {
-        let font = "Arial";
-        let color = "#000000";
-
-        visibleOptions.forEach((subOpt) => {
-          const subVal = fieldValues[subOpt.id];
-          if (subOpt.label.toLowerCase().includes("font") || subOpt.label.toLowerCase().includes("style")) {
-            font = subVal || "Arial";
-          }
-          if (subOpt.label.toLowerCase().includes("color") || subOpt.type === "swatch") {
-            color = subVal || "#000000";
-          }
-        });
-
-        loadTypography(font);
-
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = color;
-        
-        const fontSize = opt.canvasFontSize ?? 48;
-        ctx.font = `bold ${fontSize}px "${font}", Arial, sans-serif`;
-        ctx.shadowColor = "rgba(0,0,0,0.15)";
-        ctx.shadowBlur = 4;
-        ctx.shadowOffsetX = 2;
-        ctx.shadowOffsetY = 2;
-        ctx.fillText(val, 0, 0);
-      } else if ((opt.type === "clipart" || opt.type === "file") && val) {
-        const imgObj = loadedLayerImages[opt.id] || (opt.type === "file" ? overlayImage : null);
-        if (imgObj) {
-          const w = opt.canvasWidth ?? 250;
-          const h = opt.canvasHeight ?? 250;
-          ctx.drawImage(imgObj, -w / 2, -h / 2, w, h);
-        }
-      }
-      
-      ctx.restore();
+    drawPersonalizerCanvas({
+      canvas,
+      options,
+      shopperValues: fieldValues,
+      bgImage,
+      scale: 1.0, // Storefront canvas scale
+      livePreview: true,
+      loadedLayerImages,
+      overlayImage
     });
   }, [fieldValues, bgImage, loadedLayerImages, overlayImage, visibleOptions]);
 
-  // Dynamic Upcharge aggregation logic
+  // agregates active upcharges total
   const calculateUpchargeTotal = (): number => {
-    let total = 0;
-    visibleOptions.forEach((opt) => {
-      const val = fieldValues[opt.id];
-      if (opt.priceUpcharge > 0 && val) {
-        if (opt.type === "checkbox" && val === "Yes") {
-          total += opt.priceUpcharge;
-        } else if (opt.type === "text" && val.trim() !== "") {
-          total += opt.priceUpcharge;
-        } else if (opt.type === "select" || opt.type === "swatch" || opt.type === "file") {
-          total += opt.priceUpcharge;
-        }
-      }
-    });
-    return total;
+    return calculateTotalUpcharges(options, fieldValues);
   };
 
   // Secured Interceptor submission loop mapping Phase 1 Cart Transform API
@@ -613,7 +503,7 @@ export function StorefrontCustomizer({
           <label className="personalizer-label">Engraving / Customization Preview</label>
           <div className="personalizer-canvas-container">
             <canvas ref={canvasRef} id="personalizer-canvas" />
-            {(isUploading || isUploading) && (
+            {isUploading && (
               <div id="personalizer-canvas-loader" style={{ display: "flex" }}>
                 <div className="personalizer-spinner" />
                 <span>{uploadProgressMsg || "Uploading customization..."}</span>
