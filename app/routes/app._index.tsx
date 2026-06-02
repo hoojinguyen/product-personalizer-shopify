@@ -106,9 +106,9 @@ export default function Index() {
               flexShrink: 0
             }}>1</div>
             <div>
-              <div style={{ fontWeight: 600, fontSize: "16px" }}>Configure Personalization Settings</div>
+              <div style={{ fontWeight: 600, fontSize: "16px" }}>Configure Personalization Options</div>
               <s-paragraph>
-                Go to the <s-link href="/app/settings">Settings page</s-link>, select a product, enable personalization, and customize fonts, colors, max character limits, and upcharge fees.
+                Go to the <s-link href="/app/configure">Product Options page</s-link>, select a product, enable personalization, and customize options, fonts, color palettes, and upcharge fees.
               </s-paragraph>
             </div>
           </div>
@@ -157,8 +157,8 @@ export default function Index() {
         </div>
 
         <div style={{ marginTop: "24px" }}>
-          <s-button href="/app/settings" variant="primary">
-            Go to Settings
+          <s-button href="/app/configure" variant="primary">
+            Configure Product Options
           </s-button>
         </div>
       </s-section>

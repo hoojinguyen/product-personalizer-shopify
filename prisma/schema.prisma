@@ -74,4 +74,22 @@ model Asset {
   updatedAt DateTime @updatedAt
 }
 
+model AppSettings {
+  id              String   @id @default(uuid())
+  shop            String   @unique
+  layoutMode      String   @default("stacked") // stacked, tabs, modal
+  brandColor      String   @default("#008060")
+  buttonColor     String   @default("#008060")
+  buttonTextColor String   @default("#ffffff")
+  popupType       String   @default("partial") // partial, full
+  showQuantity    Boolean  @default(true)
+  cartRedirect    String   @default("stay")    // stay, cart, checkout
+  exportFormat    String   @default("png")     // png, pdf
+  dpiResolution   Int      @default(300)
+  customCss       String?
+  customJs        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 
