@@ -56,23 +56,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "save_template") {
     const id = formData.get("id") as string;
     const name = formData.get("name") as string;
+    const description = formData.get("description") as string;
     const optionsJson = formData.get("options") as string;
     const productLinksJson = formData.get("productLinks") as string; // List of Shopify Product GIDs to link
+    const unlinkedProductsJson = formData.get("unlinkedProducts") as string; // List of Shopify Product GIDs to unlink
 
     let productLinks: string[] = [];
     try {
       productLinks = JSON.parse(productLinksJson);
     } catch (e) {}
 
+    let unlinkedProducts: string[] = [];
+    try {
+      unlinkedProducts = JSON.parse(unlinkedProductsJson);
+    } catch (e) {}
+
     let template;
     if (id) {
       template = await db.template.update({
         where: { id, shop },
-        data: { name, options: optionsJson }
+        data: { name, description, options: optionsJson }
       });
     } else {
       template = await db.template.create({
-        data: { shop, name, options: optionsJson }
+        data: { shop, name, description, options: optionsJson }
       });
     }
 
@@ -125,10 +132,156 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
 
-    // Also: Identify products that were previously linked to this template but now unlinked, and disable them
-    // For simplicity in this SQLite model, unlinked checks are done client-side by submitting old list vs new list
+    // Clear metafields on unlinked products
+    for (const productId of unlinkedProducts) {
+      try {
+        await admin.graphql(
+          `#graphql
+          mutation clearProductMetafield($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              userErrors {
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              metafields: [
+                {
+                  ownerId: productId,
+                  namespace: "app",
+                  key: "customization_config",
+                  type: "json",
+                  value: JSON.stringify({ enabled: false, options: [] })
+                }
+              ]
+            }
+          }
+        );
+      } catch (e) {}
+    }
 
     return { success: true, template, userErrors };
+  }
+
+  if (intent === "duplicate_template") {
+    const id = formData.get("id") as string;
+    const sourceTemplate = await db.template.findFirst({
+      where: { id, shop }
+    });
+    if (!sourceTemplate) {
+      return { error: "Source template not found" };
+    }
+    const duplicate = await db.template.create({
+      data: {
+        shop,
+        name: `${sourceTemplate.name} Copy`,
+        description: sourceTemplate.description,
+        options: sourceTemplate.options,
+        enabled: sourceTemplate.enabled
+      }
+    });
+    return { success: true, template: duplicate };
+  }
+
+  if (intent === "link_products") {
+    const templateId = formData.get("templateId") as string;
+    const productLinksJson = formData.get("productLinks") as string;
+    const unlinkedProductsJson = formData.get("unlinkedProducts") as string;
+
+    let productLinks: string[] = [];
+    try {
+      productLinks = JSON.parse(productLinksJson);
+    } catch (e) {}
+
+    let unlinkedProducts: string[] = [];
+    try {
+      unlinkedProducts = JSON.parse(unlinkedProductsJson);
+    } catch (e) {}
+
+    const template = await db.template.findFirst({
+      where: { id: templateId, shop }
+    });
+    if (!template) {
+      return { error: "Template not found" };
+    }
+
+    const parsedOptions = JSON.parse(template.options);
+    const metafieldPayload = {
+      enabled: true,
+      templateId: template.id,
+      layoutMode: parsedOptions.layoutMode || "stacked",
+      brandColor: parsedOptions.brandColor || "#008060",
+      buttonColor: parsedOptions.buttonColor || "#008060",
+      buttonTextColor: parsedOptions.buttonTextColor || "#ffffff",
+      heading: parsedOptions.heading || "Personalize Your Item",
+      options: parsedOptions.options || []
+    };
+
+    const userErrors: any[] = [];
+    for (const productId of productLinks) {
+      try {
+        const res = await admin.graphql(
+          `#graphql
+          mutation setProductMetafield($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              userErrors {
+                field
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              metafields: [
+                {
+                  ownerId: productId,
+                  namespace: "app",
+                  key: "customization_config",
+                  type: "json",
+                  value: JSON.stringify(metafieldPayload)
+                }
+              ]
+            }
+          }
+        );
+        const resJson = await res.json();
+        const errs = resJson.data?.metafieldsSet?.userErrors || [];
+        if (errs.length > 0) userErrors.push(...errs);
+      } catch (err: any) {
+        userErrors.push({ field: productId, message: err.message });
+      }
+    }
+
+    for (const productId of unlinkedProducts) {
+      try {
+        await admin.graphql(
+          `#graphql
+          mutation clearProductMetafield($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              userErrors {
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              metafields: [
+                {
+                  ownerId: productId,
+                  namespace: "app",
+                  key: "customization_config",
+                  type: "json",
+                  value: JSON.stringify({ enabled: false, options: [] })
+                }
+              ]
+            }
+          }
+        );
+      } catch (e) {}
+    }
+
+    return { success: true, userErrors };
   }
 
   if (intent === "delete_template") {
@@ -204,13 +357,166 @@ interface CustomizationOption {
   canvasFontSize?: number;
 }
 
+const BUILT_IN_TEMPLATES = [
+  {
+    id: "builtin-chronos",
+    name: "Chronos C-200 Series",
+    description: "Preset Watch Dial Monogram & Custom Leather Strap options layout.",
+    tags: ["custom text", "color swatch", "+ 2 elements"],
+    options: JSON.stringify({
+      heading: "Custom Watch Monogram & Dial Engraving",
+      layoutMode: "tabs",
+      brandColor: "#008060",
+      buttonColor: "#008060",
+      buttonTextColor: "#ffffff",
+      canvasW: 1000,
+      canvasH: 1000,
+      viewName: "Main View",
+      viewBackground: "Blank Canvas",
+      cartSettings: {
+        generatePreview: true,
+        previewSize: "Compressed",
+        additionalFile: true,
+        hideBackground: false,
+        customCartLabel: false
+      },
+      options: [
+        {
+          id: "watch-face-text",
+          type: "text",
+          label: "Watch Dial Engraving Initials",
+          required: true,
+          priceUpcharge: 5.0,
+          maxChars: 4,
+          canvasX: 500,
+          canvasY: 480,
+          canvasFontSize: 50,
+          canvasWidth: 400,
+          canvasHeight: 150,
+          canvasRotation: 0
+        },
+        {
+          id: "watch-band-color",
+          type: "swatch",
+          label: "Leather Strap Color",
+          required: true,
+          priceUpcharge: 0,
+          choices: "#000000, #3E2723, #1A237E"
+        }
+      ]
+    })
+  },
+  {
+    id: "builtin-neon",
+    name: "Create Your Neon",
+    description: "Custom Neon Glow Sign custom text and glow color picker layout.",
+    tags: ["custom text", "color swatch", "+ 2 elements"],
+    options: JSON.stringify({
+      heading: "Build Your Custom Neon Glow Sign",
+      layoutMode: "stacked",
+      brandColor: "#008060",
+      buttonColor: "#008060",
+      buttonTextColor: "#ffffff",
+      canvasW: 1000,
+      canvasH: 1000,
+      viewName: "Main View",
+      viewBackground: "Blank Canvas",
+      cartSettings: {
+        generatePreview: true,
+        previewSize: "Compressed",
+        additionalFile: true,
+        hideBackground: false,
+        customCartLabel: false
+      },
+      options: [
+        {
+          id: "neon-glow-text",
+          type: "text",
+          label: "Neon Text Content",
+          required: true,
+          priceUpcharge: 10.0,
+          maxChars: 15,
+          canvasX: 500,
+          canvasY: 500,
+          canvasFontSize: 80,
+          canvasWidth: 700,
+          canvasHeight: 300,
+          canvasRotation: 0
+        },
+        {
+          id: "neon-glow-color",
+          type: "swatch",
+          label: "Glow Color Swatch",
+          required: true,
+          priceUpcharge: 0,
+          choices: "#FF007F, #00FFFF, #39FF14, #FFD700"
+        }
+      ]
+    })
+  },
+  {
+    id: "builtin-pillow",
+    name: "Monogram Pillow Layout",
+    description: "High-impact pillow monogram layout with customizable font sizes.",
+    tags: ["custom text", "+ 1 element"],
+    options: JSON.stringify({
+      heading: "Custom Monogram Pillow",
+      layoutMode: "stacked",
+      brandColor: "#008060",
+      buttonColor: "#008060",
+      buttonTextColor: "#ffffff",
+      canvasW: 1000,
+      canvasH: 1000,
+      viewName: "Main View",
+      viewBackground: "Blank Canvas",
+      cartSettings: {
+        generatePreview: true,
+        previewSize: "Compressed",
+        additionalFile: true,
+        hideBackground: false,
+        customCartLabel: false
+      },
+      options: [
+        {
+          id: "pillow-monogram-initials",
+          type: "text",
+          label: "Monogram Initials (3 letters)",
+          required: true,
+          priceUpcharge: 3.5,
+          maxChars: 3,
+          canvasX: 500,
+          canvasY: 500,
+          canvasFontSize: 120,
+          canvasWidth: 400,
+          canvasHeight: 400,
+          canvasRotation: 0
+        }
+      ]
+    })
+  }
+];
+
 export default function TemplatesPanel() {
   const { templates, assets, products } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<any>();
   const shopify = useAppBridge();
 
+  // Navigation and Layout modes
+  const [activeTab, setActiveTab] = useState<"built_in" | "yours">("built_in");
+  const [searchTerm, setSearchTerm] = useState("");
+  
+  // Customizer Overlay Modal status
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+
+  // Preview and Linker modal statuses
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkingTemplateId, setLinkingTemplateId] = useState<string | null>(null);
+
+  // Template Form Configuration States
   const [templateName, setTemplateName] = useState("");
+  const [templateDescription, setTemplateDescription] = useState("");
   const [heading, setHeading] = useState("Personalize Your Item");
   const [layoutMode, setLayoutMode] = useState<"stacked" | "tabs" | "modal">("stacked");
   const [brandColor, setBrandColor] = useState("#008060");
@@ -218,13 +524,33 @@ export default function TemplatesPanel() {
   const [buttonTextColor, setButtonTextColor] = useState("#ffffff");
   const [options, setOptions] = useState<CustomizationOption[]>([]);
   
-  // Product Linkage states
-  const [linkedProducts, setLinkedProducts] = useState<string[]>([]);
-  const [showProductLinker, setShowProductLinker] = useState(false);
+  // Customizer Canvas Spec Accordion Settings
+  const [viewName, setViewName] = useState("Main View");
+  const [viewBackground, setViewBackground] = useState("Blank Canvas");
+  const [canvasW, setCanvasW] = useState(1000);
+  const [canvasH, setCanvasH] = useState(1000);
+  
+  // Cart & Order Settings Accordion
+  const [generatePreview, setGeneratePreview] = useState(true);
+  const [previewSize, setPreviewSize] = useState("Compressed");
+  const [additionalFile, setAdditionalFile] = useState(true);
+  const [hideBackground, setHideBackground] = useState(false);
+  const [customCartLabel, setCustomCartLabel] = useState(false);
 
-  // Live Canvas Preview states
+  // Live Preview Settings
+  const [livePreview, setLivePreview] = useState(true);
+
+  // Product Linkage lists
+  const [linkedProducts, setLinkedProducts] = useState<string[]>([]);
+  const [initialLinkedProducts, setInitialLinkedProducts] = useState<string[]>([]);
+
+  // Pagination for Your Templates
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+
+  // Canvas Interactivity states
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [previewText, setPreviewText] = useState("Hello World");
+  const [previewText, setPreviewText] = useState("Jane");
   const [previewFont, setPreviewFont] = useState("Arial");
   const [previewColor, setPreviewColor] = useState("#000000");
 
@@ -254,55 +580,315 @@ export default function TemplatesPanel() {
     startFontSize: 48
   });
 
+  const fontAssets = assets.filter(a => a.type === "FONT" || a.type === "FONTS");
+  const colorAssets = assets.filter(a => a.type === "COLOR" || a.type === "COLORS");
+  const optionAssets = assets.filter(a => a.type === "OPTION" || a.type === "OPTIONS");
+  const clipartAssets = assets.filter(a => a.type === "IMAGE" || a.type === "IMAGES");
+
+  // Load custom typography @font-face rules on mount
+  useEffect(() => {
+    fontAssets.forEach(f => {
+      try {
+        const val = JSON.parse(f.value);
+        const fontName = f.name;
+        const fontUrl = val.url;
+        const format = val.format || "truetype";
+        if (fontUrl) {
+          const newStyle = document.createElement("style");
+          newStyle.appendChild(document.createTextNode(`@font-face { font-family: "${fontName}"; src: url("${fontUrl}") format("${format}"); }`));
+          document.head.appendChild(newStyle);
+        }
+      } catch (e) {}
+    });
+  }, [fontAssets]);
+
+  // Load selected template configurations
+  useEffect(() => {
+    if (selectedTemplate) {
+      setTemplateName(selectedTemplate.name);
+      setTemplateDescription(selectedTemplate.description || "");
+      try {
+        const config = JSON.parse(selectedTemplate.options);
+        setHeading(config.heading || "Personalize Your Item");
+        setLayoutMode(config.layoutMode || "stacked");
+        setBrandColor(config.brandColor || "#008060");
+        setButtonColor(config.buttonColor || "#008060");
+        setButtonTextColor(config.buttonTextColor || "#ffffff");
+        setOptions(config.options || []);
+        
+        setViewName(config.viewName || "Main View");
+        setViewBackground(config.viewBackground || "Blank Canvas");
+        setCanvasW(config.canvasW || 1000);
+        setCanvasH(config.canvasH || 1000);
+
+        if (config.cartSettings) {
+          setGeneratePreview(config.cartSettings.generatePreview !== false);
+          setPreviewSize(config.cartSettings.previewSize || "Compressed");
+          setAdditionalFile(config.cartSettings.additionalFile !== false);
+          setHideBackground(!!config.cartSettings.hideBackground);
+          setCustomCartLabel(!!config.cartSettings.customCartLabel);
+        } else {
+          setGeneratePreview(true);
+          setPreviewSize("Compressed");
+          setAdditionalFile(true);
+          setHideBackground(false);
+          setCustomCartLabel(false);
+        }
+
+        // Find products linked to this template
+        const linked: string[] = [];
+        products.forEach((p: any) => {
+          if (p.metafield?.value) {
+            try {
+              const pf = JSON.parse(p.metafield.value);
+              if (pf.templateId === selectedTemplate.id) linked.push(p.id);
+            } catch (e) {}
+          }
+        });
+        setLinkedProducts(linked);
+        setInitialLinkedProducts(linked);
+      } catch (e) {
+        setOptions([]);
+        setLinkedProducts([]);
+        setInitialLinkedProducts([]);
+      }
+    } else {
+      // Clear for new template
+      setTemplateName("New Customization Blueprint");
+      setTemplateDescription("");
+      setHeading("Personalize Your Item");
+      setLayoutMode("stacked");
+      setBrandColor("#008060");
+      setButtonColor("#008060");
+      setButtonTextColor("#ffffff");
+      
+      setViewName("Main View");
+      setViewBackground("Blank Canvas");
+      setCanvasW(1000);
+      setCanvasH(1000);
+      
+      setGeneratePreview(true);
+      setPreviewSize("Compressed");
+      setAdditionalFile(true);
+      setHideBackground(false);
+      setCustomCartLabel(false);
+
+      setOptions([
+        {
+          id: "opt-default-text",
+          type: "text",
+          label: "Engraving Custom Text",
+          required: true,
+          priceUpcharge: 0,
+          maxChars: 30,
+          canvasX: 500,
+          canvasY: 500,
+          canvasFontSize: 80,
+          canvasWidth: 500,
+          canvasHeight: 150,
+          canvasRotation: 0
+        }
+      ]);
+      setLinkedProducts([]);
+      setInitialLinkedProducts([]);
+    }
+  }, [selectedTemplate, products]);
+
+  // Load custom background image for canvas if any
+  const [bgImageObj, setBgImageObj] = useState<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (viewBackground && viewBackground !== "Blank Canvas") {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = viewBackground;
+      img.onload = () => setBgImageObj(img);
+      img.onerror = () => setBgImageObj(null);
+    } else {
+      setBgImageObj(null);
+    }
+  }, [viewBackground]);
+
+  // WYSIWYG Canvas Rendering
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const cx = canvas.getContext("2d");
+    if (!cx) return;
+
+    // We set logical dimensions from state
+    canvas.width = canvasW;
+    canvas.height = canvasH;
+
+    cx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (bgImageObj) {
+      cx.drawImage(bgImageObj, 0, 0, canvas.width, canvas.height);
+    } else {
+      cx.fillStyle = "#ffffff";
+      cx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (livePreview) {
+      // Draw grid helper if no image or user wants alignment support
+      cx.strokeStyle = "rgba(0,128,96,0.1)";
+      cx.lineWidth = 2;
+      cx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
+
+      options.forEach(opt => {
+        cx.save();
+        
+        const x = opt.canvasX ?? 500;
+        const y = opt.canvasY ?? 500;
+        cx.translate(x, y);
+
+        if (opt.canvasRotation) {
+          cx.rotate((opt.canvasRotation * Math.PI) / 180);
+        }
+
+        let renderW = 0;
+        let renderH = 0;
+
+        if (opt.type === "text") {
+          cx.fillStyle = opt.id === "opt-default-text" ? previewColor : "#1a1a1a";
+          cx.textAlign = "center";
+          cx.textBaseline = "middle";
+          const fontSize = opt.canvasFontSize ?? 80;
+          cx.font = `bold ${fontSize}px "${opt.id === "opt-default-text" ? previewFont : "Arial"}", Arial, sans-serif`;
+          
+          const textVal = opt.id === "opt-default-text" ? (previewText || opt.label || "Custom Text") : (opt.label || "Custom Text");
+          cx.fillText(textVal, 0, 0);
+
+          renderW = fontSize * textVal.length * 0.5;
+          renderH = fontSize;
+        } else if (opt.type === "clipart") {
+          cx.fillStyle = "rgba(0, 128, 96, 0.08)";
+          cx.strokeStyle = "#008060";
+          cx.lineWidth = 3;
+          renderW = opt.canvasWidth ?? 250;
+          renderH = opt.canvasHeight ?? 250;
+          cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+          cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
+          
+          cx.fillStyle = "#008060";
+          cx.font = "bold 20px Arial";
+          cx.textAlign = "center";
+          cx.textBaseline = "middle";
+          cx.fillText(`🖼️ Clipart: ${opt.label}`, 0, 0);
+        } else if (opt.type === "file") {
+          cx.fillStyle = "rgba(44, 62, 80, 0.08)";
+          cx.strokeStyle = "#2c3e50";
+          cx.lineWidth = 3;
+          renderW = opt.canvasWidth ?? 250;
+          renderH = opt.canvasHeight ?? 250;
+          cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+          cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
+          
+          cx.fillStyle = "#2c3e50";
+          cx.font = "bold 20px Arial";
+          cx.textAlign = "center";
+          cx.textBaseline = "middle";
+          cx.fillText(`📸 Upload: ${opt.label}`, 0, 0);
+        }
+
+        // Selected outline bounding bounds
+        if (opt.id === selectedOptionId) {
+          cx.strokeStyle = "#008060";
+          cx.lineWidth = 3;
+          cx.setLineDash([8, 8]);
+          cx.strokeRect(-renderW/2 - 10, -renderH/2 - 10, renderW + 20, renderH + 20);
+          cx.setLineDash([]);
+
+          // Resize handles
+          cx.fillStyle = "#ffffff";
+          cx.strokeStyle = "#008060";
+          cx.lineWidth = 2.5;
+          const handleSize = 14;
+          const corners = [
+            { x: -renderW/2 - 10, y: -renderH/2 - 10 },
+            { x: renderW/2 + 10, y: -renderH/2 - 10 },
+            { x: -renderW/2 - 10, y: renderH/2 + 10 },
+            { x: renderW/2 + 10, y: renderH/2 + 10 }
+          ];
+          corners.forEach(corner => {
+            cx.fillRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+            cx.strokeRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+          });
+        }
+
+        cx.restore();
+      });
+    }
+
+    // Indicator tag
+    cx.fillStyle = "#6d7175";
+    cx.font = "bold 14px monospace";
+    cx.textAlign = "right";
+    cx.fillText(`${canvasW}x${canvasH}px logical viewport`, canvas.width - 20, canvas.height - 20);
+  }, [previewText, previewFont, previewColor, options, selectedOptionId, canvasW, canvasH, livePreview, bgImageObj]);
+
+  // Handle toast notifications upon actions completion
+  useEffect(() => {
+    if (fetcher.data?.success) {
+      if (fetcher.data.deleted) {
+        shopify.toast.show("Template blueprint deleted successfully.");
+      } else if (fetcher.data.template) {
+        shopify.toast.show("Template is saved! Redirecting to template configure page.");
+        setIsModalOpen(false);
+      } else {
+        shopify.toast.show("Action completed successfully!");
+      }
+    } else if (fetcher.data?.error) {
+      shopify.toast.show(`Error: ${fetcher.data.error}`);
+    }
+  }, [fetcher.data, shopify]);
+
   const getCanvasMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 400;
-    const y = ((e.clientY - rect.top) / rect.height) * 400;
+    const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
     return { x, y };
   };
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const { x, y } = getCanvasMousePos(e);
-    const mappedX = x * 2;
-    const mappedY = y * 2;
 
     if (selectedOptionId) {
       const opt = options.find(o => o.id === selectedOptionId);
       if (opt) {
         const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
-        const w = opt.type === "text" ? ((opt.canvasFontSize ?? 48) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
-        const h = opt.type === "text" ? (opt.canvasFontSize ?? 48) : (opt.canvasHeight ?? 250);
+        const w = opt.type === "text" ? ((opt.canvasFontSize ?? 80) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
+        const h = opt.type === "text" ? (opt.canvasFontSize ?? 80) : (opt.canvasHeight ?? 250);
         
-        const cx = opt.canvasX ?? 400;
-        const cy = opt.canvasY ?? 400;
+        const cxVal = opt.canvasX ?? 500;
+        const cyVal = opt.canvasY ?? 500;
 
-        const left = cx - w/2;
-        const right = cx + w/2;
-        const top = cy - h/2;
-        const bottom = cy + h/2;
+        const left = cxVal - w/2;
+        const right = cxVal + w/2;
+        const top = cyVal - h/2;
+        const bottom = cyVal + h/2;
 
-        const threshold = 30; // Logical click coordinate hit boundary
+        const threshold = 40;
 
         let handle: "nw" | "ne" | "sw" | "se" | null = null;
-        if (Math.abs(mappedX - left) < threshold && Math.abs(mappedY - top) < threshold) handle = "nw";
-        else if (Math.abs(mappedX - right) < threshold && Math.abs(mappedY - top) < threshold) handle = "ne";
-        else if (Math.abs(mappedX - left) < threshold && Math.abs(mappedY - bottom) < threshold) handle = "sw";
-        else if (Math.abs(mappedX - right) < threshold && Math.abs(mappedY - bottom) < threshold) handle = "se";
+        if (Math.abs(x - left) < threshold && Math.abs(y - top) < threshold) handle = "nw";
+        else if (Math.abs(x - right) < threshold && Math.abs(y - top) < threshold) handle = "ne";
+        else if (Math.abs(x - left) < threshold && Math.abs(y - bottom) < threshold) handle = "sw";
+        else if (Math.abs(x - right) < threshold && Math.abs(y - bottom) < threshold) handle = "se";
 
         if (handle) {
           setDragState({
             isDragging: false,
             isResizing: true,
             resizeHandle: handle,
-            startMouseX: mappedX,
-            startMouseY: mappedY,
-            startCanvasX: cx,
-            startCanvasY: cy,
+            startMouseX: x,
+            startMouseY: y,
+            startCanvasX: cxVal,
+            startCanvasY: cyVal,
             startWidth: opt.canvasWidth ?? 250,
             startHeight: opt.canvasHeight ?? 250,
-            startFontSize: opt.canvasFontSize ?? 48
+            startFontSize: opt.canvasFontSize ?? 80
           });
           return;
         }
@@ -312,30 +898,30 @@ export default function TemplatesPanel() {
     for (let i = options.length - 1; i >= 0; i--) {
       const opt = options[i];
       const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
-      const w = opt.type === "text" ? ((opt.canvasFontSize ?? 48) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
-      const h = opt.type === "text" ? (opt.canvasFontSize ?? 48) : (opt.canvasHeight ?? 250);
+      const w = opt.type === "text" ? ((opt.canvasFontSize ?? 80) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
+      const h = opt.type === "text" ? (opt.canvasFontSize ?? 80) : (opt.canvasHeight ?? 250);
       
-      const cx = opt.canvasX ?? 400;
-      const cy = opt.canvasY ?? 400;
+      const cxVal = opt.canvasX ?? 500;
+      const cyVal = opt.canvasY ?? 500;
 
       if (
-        mappedX >= cx - w/2 &&
-        mappedX <= cx + w/2 &&
-        mappedY >= cy - h/2 &&
-        mappedY <= cy + h/2
+        x >= cxVal - w/2 &&
+        x <= cxVal + w/2 &&
+        y >= cyVal - h/2 &&
+        y <= cyVal + h/2
       ) {
         setSelectedOptionId(opt.id);
         setDragState({
           isDragging: true,
           isResizing: false,
           resizeHandle: null,
-          startMouseX: mappedX,
-          startMouseY: mappedY,
-          startCanvasX: cx,
-          startCanvasY: cy,
+          startMouseX: x,
+          startMouseY: y,
+          startCanvasX: cxVal,
+          startCanvasY: cyVal,
           startWidth: opt.canvasWidth ?? 250,
           startHeight: opt.canvasHeight ?? 250,
-          startFontSize: opt.canvasFontSize ?? 48
+          startFontSize: opt.canvasFontSize ?? 80
         });
         return;
       }
@@ -347,14 +933,12 @@ export default function TemplatesPanel() {
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!dragState.isDragging && !dragState.isResizing) return;
     const { x, y } = getCanvasMousePos(e);
-    const mappedX = x * 2;
-    const mappedY = y * 2;
 
     const opt = options.find(o => o.id === selectedOptionId);
     if (!opt) return;
 
-    const dx = mappedX - dragState.startMouseX;
-    const dy = mappedY - dragState.startMouseY;
+    const dx = x - dragState.startMouseX;
+    const dy = y - dragState.startMouseY;
 
     if (dragState.isDragging) {
       handleUpdateOption(opt.id, {
@@ -388,224 +972,31 @@ export default function TemplatesPanel() {
     setDragState(prev => ({ ...prev, isDragging: false, isResizing: false, resizeHandle: null }));
   };
 
-  const fontAssets = assets.filter(a => a.type === "FONTS");
-  const colorAssets = assets.filter(a => a.type === "COLORS");
-  const optionAssets = assets.filter(a => a.type === "OPTIONS");
-  const clipartAssets = assets.filter(a => a.type === "IMAGES");
-
-  // Load selected template configurations
-  useEffect(() => {
-    if (selectedTemplate) {
-      setTemplateName(selectedTemplate.name);
-      try {
-        const config = JSON.parse(selectedTemplate.options);
-        setHeading(config.heading || "Personalize Your Item");
-        setLayoutMode(config.layoutMode || "stacked");
-        setBrandColor(config.brandColor || "#008060");
-        setButtonColor(config.buttonColor || "#008060");
-        setButtonTextColor(config.buttonTextColor || "#ffffff");
-        setOptions(config.options || []);
-
-        // Find products currently linked to this template
-        const linked: string[] = [];
-        products.forEach((p: any) => {
-          if (p.metafield?.value) {
-            try {
-              const pf = JSON.parse(p.metafield.value);
-              if (pf.templateId === selectedTemplate.id) linked.push(p.id);
-            } catch (e) {}
-          }
-        });
-        setLinkedProducts(linked);
-      } catch (e) {
-        setOptions([]);
-        setLinkedProducts([]);
-      }
-    } else {
-      // Clear for new template
-      setTemplateName("New Customization Blueprint");
-      setHeading("Personalize Your Item");
-      setLayoutMode("stacked");
-      setBrandColor("#008060");
-      setButtonColor("#008060");
-      setButtonTextColor("#ffffff");
-      setOptions([
-        {
-          id: "opt-default-text",
-          type: "text",
-          label: "Engraving Custom Text",
-          required: true,
-          priceUpcharge: 0,
-          maxChars: 30,
-          canvasX: 400,
-          canvasY: 400,
-          canvasFontSize: 48,
-          canvasWidth: 250,
-          canvasHeight: 250,
-          canvasRotation: 0
-        }
-      ]);
-      setLinkedProducts([]);
-    }
-  }, [selectedTemplate, products]);
-
-  // Load custom typography @font-face rules on mount so React canvas can render them
-  useEffect(() => {
-    fontAssets.forEach(f => {
-      try {
-        const val = JSON.parse(f.value);
-        const fontName = f.name;
-        const fontUrl = val.url;
-        const format = val.format;
-        const newStyle = document.createElement("style");
-        newStyle.appendChild(document.createTextNode(`@font-face { font-family: "${fontName}"; src: url("${fontUrl}") format("${format}"); }`));
-        document.head.appendChild(newStyle);
-      } catch (e) {}
-    });
-  }, [fontAssets]);
-
-  // WYSIWYG Coordinate-Aware Multi-Layer Canvas Rendering matching ADR 0001
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const cx = canvas.getContext("2d");
-    if (!cx) return;
-
-    canvas.width = 400;
-    canvas.height = 400;
-
-    cx.clearRect(0, 0, canvas.width, canvas.height);
-    // Draw canvas card background
-    cx.fillStyle = "#ffffff";
-    cx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Draw coordinate bounds for merchant visual alignment
-    cx.strokeStyle = "rgba(0,128,96,0.1)";
-    cx.lineWidth = 1;
-    cx.strokeRect(10, 10, canvas.width - 20, canvas.height - 20);
-
-    // Render option layers sequentially
-    options.forEach((opt, idx) => {
-      cx.save();
-      
-      const x = (opt.canvasX ?? 400) / 2;
-      const y = (opt.canvasY ?? 400) / 2;
-      
-      // Translate to this layer's coordinates
-      cx.translate(x, y);
-
-      if (opt.canvasRotation) {
-        cx.rotate((opt.canvasRotation * Math.PI) / 180);
-      }
-
-      let renderW = 0;
-      let renderH = 0;
-
-      if (opt.type === "text") {
-        cx.fillStyle = opt.id === "opt-default-text" ? previewColor : "#1a1a1a";
-        cx.textAlign = "center";
-        cx.textBaseline = "middle";
-        const fontSize = (opt.canvasFontSize ?? 48) / 2;
-        cx.font = `bold ${fontSize}px "${opt.id === "opt-default-text" ? previewFont : "Arial"}", Arial, sans-serif`;
-        
-        const textVal = opt.id === "opt-default-text" ? (previewText || opt.label || "Custom Text") : (opt.label || "Custom Text");
-        cx.fillText(textVal, 0, 0);
-
-        renderW = fontSize * textVal.length * 0.5;
-        renderH = fontSize;
-      } else if (opt.type === "clipart") {
-        cx.fillStyle = "rgba(0, 128, 96, 0.08)";
-        cx.strokeStyle = "#008060";
-        cx.lineWidth = 1.5;
-        renderW = (opt.canvasWidth ?? 250) / 2;
-        renderH = (opt.canvasHeight ?? 250) / 2;
-        cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
-        cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
-        
-        cx.fillStyle = "#008060";
-        cx.font = "bold 10px Arial";
-        cx.textAlign = "center";
-        cx.textBaseline = "middle";
-        cx.fillText(`🖼️ Clipart: ${opt.label}`, 0, 0);
-      } else if (opt.type === "file") {
-        cx.fillStyle = "rgba(44, 62, 80, 0.08)";
-        cx.strokeStyle = "#2c3e50";
-        cx.lineWidth = 1.5;
-        renderW = (opt.canvasWidth ?? 250) / 2;
-        renderH = (opt.canvasHeight ?? 250) / 2;
-        cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
-        cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
-        
-        cx.fillStyle = "#2c3e50";
-        cx.font = "bold 10px Arial";
-        cx.textAlign = "center";
-        cx.textBaseline = "middle";
-        cx.fillText(`📸 Upload: ${opt.label}`, 0, 0);
-      }
-
-      // Draw bounding outlines if the option is currently selected
-      if (opt.id === selectedOptionId) {
-        cx.strokeStyle = "#008060";
-        cx.lineWidth = 1.5;
-        cx.setLineDash([4, 4]);
-        cx.strokeRect(-renderW/2 - 4, -renderH/2 - 4, renderW + 8, renderH + 8);
-        cx.setLineDash([]);
-
-        // Render resize handles (6px boxes) at the four corners
-        cx.fillStyle = "#ffffff";
-        cx.strokeStyle = "#008060";
-        cx.lineWidth = 1.2;
-        const handleSize = 6;
-        const corners = [
-          { x: -renderW/2 - 4, y: -renderH/2 - 4 }, // Top-Left
-          { x: renderW/2 + 4, y: -renderH/2 - 4 },  // Top-Right
-          { x: -renderW/2 - 4, y: renderH/2 + 4 },  // Bottom-Left
-          { x: renderW/2 + 4, y: renderH/2 + 4 }    // Bottom-Right
-        ];
-        corners.forEach(corner => {
-          cx.fillRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
-          cx.strokeRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
-        });
-      }
-
-      cx.restore();
-    });
-
-    // Draw tiny overlay tag indicating print frame
-    cx.fillStyle = "#6d7175";
-    cx.font = "bold 9px monospace";
-    cx.textAlign = "right";
-    cx.fillText("400x400 px mockup", canvas.width - 15, canvas.height - 15);
-  }, [previewText, previewFont, previewColor, options, selectedOptionId]);
-
-  useEffect(() => {
-    if (fetcher.data?.success) {
-      shopify.toast.show("Template blueprints linked and synchronized successfully!");
-    }
-  }, [fetcher.data, shopify]);
-
   const handleAddOption = () => {
+    const newId = `opt-${Date.now()}`;
     setOptions([
       ...options,
       {
-        id: `opt-${Date.now()}`,
+        id: newId,
         type: "text",
         label: "Custom Choice Field",
         required: false,
         priceUpcharge: 0,
         maxChars: 30,
-        canvasX: 400,
-        canvasY: 400,
-        canvasFontSize: 48,
-        canvasWidth: 250,
-        canvasHeight: 250,
+        canvasX: 500,
+        canvasY: 500,
+        canvasFontSize: 60,
+        canvasWidth: 300,
+        canvasHeight: 150,
         canvasRotation: 0
       }
     ]);
+    setSelectedOptionId(newId);
   };
 
   const handleRemoveOption = (id: string) => {
     setOptions(options.filter(o => o.id !== id));
+    if (selectedOptionId === id) setSelectedOptionId(null);
   };
 
   const handleUpdateOption = (id: string, updates: Partial<CustomizationOption>) => {
@@ -615,25 +1006,17 @@ export default function TemplatesPanel() {
         if (updates.type && updates.type !== o.type) {
           if (u.type === "text") {
             u.maxChars = 30;
-            u.canvasX = 400;
-            u.canvasY = 400;
-            u.canvasFontSize = 48;
+            u.canvasX = 500;
+            u.canvasY = 500;
+            u.canvasFontSize = 80;
           } else if (u.type === "select" || u.type === "swatch") {
             u.choicesType = "custom";
             u.choices = "Option X, Option Y";
-          } else if (u.type === "clipart") {
-            u.choicesType = "global";
-            u.choices = "[]";
-            u.canvasX = 400;
-            u.canvasY = 400;
-            u.canvasWidth = 250;
-            u.canvasHeight = 250;
-            u.canvasRotation = 0;
-          } else if (u.type === "file") {
-            u.canvasX = 400;
-            u.canvasY = 400;
-            u.canvasWidth = 250;
-            u.canvasHeight = 250;
+          } else if (u.type === "clipart" || u.type === "file") {
+            u.canvasX = 500;
+            u.canvasY = 500;
+            u.canvasWidth = 300;
+            u.canvasHeight = 300;
             u.canvasRotation = 0;
           }
         }
@@ -655,34 +1038,126 @@ export default function TemplatesPanel() {
       brandColor,
       buttonColor,
       buttonTextColor,
+      viewName,
+      viewBackground,
+      canvasW,
+      canvasH,
+      cartSettings: {
+        generatePreview,
+        previewSize,
+        additionalFile,
+        hideBackground,
+        customCartLabel
+      },
       options
     };
+
+    // Calculate which products to unlink
+    const unlinked = initialLinkedProducts.filter(id => !linkedProducts.includes(id));
 
     fetcher.submit(
       {
         intent: "save_template",
         id: selectedTemplate?.id || "",
         name: templateName,
+        description: templateDescription,
         options: JSON.stringify(payload),
-        productLinks: JSON.stringify(linkedProducts)
+        productLinks: JSON.stringify(linkedProducts),
+        unlinkedProducts: JSON.stringify(unlinked)
       },
       { method: "POST" }
     );
   };
 
-  const handleDeleteTemplate = () => {
-    if (!selectedTemplate) return;
-    if (confirm("Delete this template? Linked products will have their personalization features removed.")) {
+  const handleDeleteTemplate = (id: string, linkedPIds: string[]) => {
+    if (confirm("Delete this template? Linked products will have their personalization options removed.")) {
       fetcher.submit(
         {
           intent: "delete_template",
-          id: selectedTemplate.id,
-          linkedProducts: JSON.stringify(linkedProducts)
+          id,
+          linkedProducts: JSON.stringify(linkedPIds)
         },
         { method: "POST" }
       );
-      setSelectedTemplate(null);
     }
+  };
+
+  const handleDuplicateTemplate = (id: string) => {
+    fetcher.submit(
+      {
+        intent: "duplicate_template",
+        id
+      },
+      { method: "POST" }
+    );
+  };
+
+  const handleDuplicateBuiltIn = (builtin: any) => {
+    fetcher.submit(
+      {
+        intent: "save_template",
+        id: "",
+        name: `${builtin.name} Copy`,
+        description: builtin.description,
+        options: builtin.options,
+        productLinks: JSON.stringify([]),
+        unlinkedProducts: JSON.stringify([])
+      },
+      { method: "POST" }
+    );
+  };
+
+  const handleOpenLinkModal = (templateId: string) => {
+    setLinkingTemplateId(templateId);
+    
+    // Find already linked products
+    const linked: string[] = [];
+    products.forEach((p: any) => {
+      if (p.metafield?.value) {
+        try {
+          const pf = JSON.parse(p.metafield.value);
+          if (pf.templateId === templateId) linked.push(p.id);
+        } catch (e) {}
+      }
+    });
+    
+    setLinkedProducts(linked);
+    setInitialLinkedProducts(linked);
+    setIsLinkModalOpen(true);
+  };
+
+  const handleSaveProductLinks = () => {
+    if (!linkingTemplateId) return;
+
+    const unlinked = initialLinkedProducts.filter(id => !linkedProducts.includes(id));
+
+    // If it's a built-in virtual template, we need to create it in DB first!
+    const builtin = BUILT_IN_TEMPLATES.find(b => b.id === linkingTemplateId);
+    if (builtin) {
+      fetcher.submit(
+        {
+          intent: "save_template",
+          id: "",
+          name: builtin.name,
+          description: builtin.description,
+          options: builtin.options,
+          productLinks: JSON.stringify(linkedProducts),
+          unlinkedProducts: JSON.stringify([])
+        },
+        { method: "POST" }
+      );
+    } else {
+      fetcher.submit(
+        {
+          intent: "link_products",
+          templateId: linkingTemplateId,
+          productLinks: JSON.stringify(linkedProducts),
+          unlinkedProducts: JSON.stringify(unlinked)
+        },
+        { method: "POST" }
+      );
+    }
+    setIsLinkModalOpen(false);
   };
 
   const toggleProductLink = (id: string) => {
@@ -693,570 +1168,1542 @@ export default function TemplatesPanel() {
     }
   };
 
+  // Searching and Filtering
+  const filteredTemplates = templates.filter((t: any) => {
+    const s = searchTerm.toLowerCase();
+    return t.name.toLowerCase().includes(s) || (t.description && t.description.toLowerCase().includes(s));
+  });
+
+  const filteredBuiltIn = BUILT_IN_TEMPLATES.filter(b => {
+    const s = searchTerm.toLowerCase();
+    return b.name.toLowerCase().includes(s) || b.description.toLowerCase().includes(s);
+  });
+
+  // Pagination Math
+  const totalItems = filteredTemplates.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedTemplates = filteredTemplates.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // Compute option priceupcharges
+  const optionPriceSum = options.reduce((sum, opt) => sum + (opt.priceUpcharge || 0), 0);
+
   return (
-    <s-page heading="Templates Customizer Dashboard">
-      <s-section heading="Personalization Customizer Templates">
-        <s-paragraph>
-          Templates let you build multi-option customer customization modules once, and bulk-link them across hundreds of products. Linked items are kept synchronized automatically when you update your master blueprint.
-        </s-paragraph>
+    <s-page heading="Templates">
+      
+      {/* Visual styling override */}
+      <style>{`
+        /* Premium custom design elements */
+        .templates-tab-container {
+          background: #ffffff;
+          border-radius: 12px;
+          border: 1px solid #ebebeb;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+          overflow: hidden;
+          margin-top: 20px;
+        }
+        
+        .templates-tab-bar {
+          display: flex;
+          background: #fafafa;
+          border-bottom: 1px solid #ebebeb;
+          padding: 0 16px;
+        }
 
-        {/* Top select or create buttons */}
-        <div style={{ display: "flex", gap: "12px", margin: "16px 0", flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontWeight: 600 }}>Active Templates:</span>
-          <select
-            value={selectedTemplate?.id || ""}
-            onChange={(e) => {
-              const t = templates.find(temp => temp.id === e.target.value);
-              setSelectedTemplate(t || null);
+        .templates-tab-item {
+          padding: 14px 20px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #6d7175;
+          cursor: pointer;
+          border-bottom: 3px solid transparent;
+          transition: all 0.2s ease;
+        }
+
+        .templates-tab-item:hover {
+          color: #000000;
+        }
+
+        .templates-tab-item.active {
+          color: #008060;
+          border-bottom-color: #008060;
+        }
+
+        .search-and-filters {
+          padding: 16px;
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          border-bottom: 1px solid #ebebeb;
+        }
+
+        .search-field-wrapper {
+          position: relative;
+          flex: 1;
+        }
+
+        .search-field-input {
+          width: 100%;
+          padding: 8px 12px 8px 36px;
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          font-size: 14px;
+          outline: none;
+          background: #ffffff;
+        }
+
+        .search-field-input:focus {
+          border-color: #008060;
+          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.15);
+        }
+
+        .search-field-icon {
+          position: absolute;
+          left: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #8c9196;
+        }
+
+        .template-table {
+          width: 100%;
+          border-collapse: collapse;
+          text-align: left;
+        }
+
+        .template-table th {
+          background: #fafafa;
+          padding: 14px 16px;
+          font-size: 12px;
+          font-weight: 600;
+          text-transform: uppercase;
+          color: #6d7175;
+          border-bottom: 1px solid #ebebeb;
+        }
+
+        .template-table td {
+          padding: 16px;
+          font-size: 14px;
+          border-bottom: 1px solid #f3f3f3;
+          vertical-align: middle;
+        }
+
+        .template-table tr:hover td {
+          background-color: #fcfcfc;
+        }
+
+        .badge-tag {
+          display: inline-block;
+          padding: 3px 10px;
+          font-size: 11px;
+          font-weight: 600;
+          border-radius: 12px;
+          margin-right: 6px;
+          background-color: #f1f2f4;
+          color: #2c3e50;
+          border: 1px solid #e1e3e6;
+        }
+
+        .action-icon-btn {
+          background: none;
+          border: none;
+          padding: 6px;
+          color: #6d7175;
+          cursor: pointer;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+
+        .action-icon-btn:hover {
+          color: #000;
+          background: #f1f2f4;
+        }
+
+        .action-icon-btn.danger:hover {
+          color: #d93838;
+          background: #fde8e8;
+        }
+
+        .btn-text-action {
+          background: none;
+          border: none;
+          color: #008060;
+          font-weight: 600;
+          cursor: pointer;
+          font-size: 13px;
+          padding: 6px 10px;
+          border-radius: 4px;
+          transition: all 0.2s;
+        }
+
+        .btn-text-action:hover {
+          background: rgba(0, 128, 96, 0.08);
+        }
+
+        /* Overlay blocker modal styles */
+        .customizer-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(8px);
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          animation: fadeInOverlay 0.2s ease-out;
+        }
+
+        @keyframes fadeInOverlay {
+          from { opacity: 0; } to { opacity: 1; }
+        }
+
+        .customizer-card {
+          width: 90vw;
+          height: 90vh;
+          background: #ffffff;
+          border-radius: 14px;
+          box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          animation: slideUpCard 0.25s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+
+        @keyframes slideUpCard {
+          from { transform: translateY(40px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        .customizer-header {
+          padding: 16px 24px;
+          border-bottom: 1px solid #ebebeb;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #fafafa;
+        }
+
+        .customizer-header h2 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 700;
+          color: #1a1a1a;
+        }
+
+        .customizer-pane {
+          flex: 1;
+          display: flex;
+          overflow: hidden;
+        }
+
+        .customizer-sidebar {
+          width: 360px;
+          border-right: 1px solid #ebebeb;
+          display: flex;
+          flex-direction: column;
+          background: #ffffff;
+        }
+
+        .customizer-main {
+          flex: 1;
+          background: #f4f5f6;
+          background-image: radial-gradient(#e3e4e6 1px, transparent 1px);
+          background-size: 20px 20px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          position: relative;
+          overflow-y: auto;
+        }
+
+        .customizer-subtabs {
+          display: flex;
+          background: #f1f2f4;
+          border-bottom: 1px solid #ebebeb;
+          padding: 4px 12px;
+        }
+
+        .customizer-subtab {
+          padding: 8px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          color: #6d7175;
+          cursor: pointer;
+          border-radius: 4px;
+          transition: all 0.2s;
+        }
+
+        .customizer-subtab.active {
+          color: #000;
+          background: #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        /* Custom Accordion Styling */
+        .sidebar-accordion {
+          border-bottom: 1px solid #ebebeb;
+        }
+
+        .sidebar-accordion summary {
+          padding: 14px 16px;
+          font-size: 13px;
+          font-weight: 700;
+          color: #2c3e50;
+          cursor: pointer;
+          list-style: none;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          user-select: none;
+          background: #ffffff;
+        }
+
+        .sidebar-accordion summary::-webkit-details-marker {
+          display: none;
+        }
+
+        .sidebar-accordion summary::after {
+          content: "➔";
+          font-size: 10px;
+          color: #8c9196;
+          transition: transform 0.2s ease;
+        }
+
+        .sidebar-accordion[open] summary::after {
+          transform: rotate(90deg);
+        }
+
+        .accordion-content {
+          padding: 0 16px 16px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          background: #ffffff;
+        }
+
+        .input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+
+        .input-group label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #6d7175;
+          text-transform: uppercase;
+        }
+
+        .custom-input {
+          padding: 8px;
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          font-size: 13px;
+          background: #ffffff;
+          outline: none;
+        }
+
+        .custom-input:focus {
+          border-color: #008060;
+          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.1);
+        }
+
+        .toggle-switch-wrapper {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 4px 0;
+        }
+
+        .toggle-switch-label {
+          font-size: 12px;
+          font-weight: 500;
+          color: #1a1a1a;
+        }
+
+        /* Toggle checkbox slider */
+        .toggle-switch {
+          position: relative;
+          display: inline-block;
+          width: 38px;
+          height: 20px;
+        }
+
+        .toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        .toggle-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background-color: #ccc;
+          transition: .3s;
+          border-radius: 20px;
+        }
+
+        .toggle-slider:before {
+          position: absolute;
+          content: "";
+          height: 14px;
+          width: 14px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          transition: .3s;
+          border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+          background-color: #008060;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+          transform: translateX(18px);
+        }
+
+        /* Canvas visual preview */
+        .canvas-frame-container {
+          background: #ffffff;
+          border-radius: 12px;
+          padding: 16px;
+          box-shadow: 0 6px 30px rgba(0,0,0,0.06);
+          border: 1px solid #ebebeb;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .canvas-interactive {
+          border: 1px solid #d2d5d8;
+          border-radius: 6px;
+          background: #ffffff;
+          box-shadow: inset 0 2px 8px rgba(0,0,0,0.03);
+          max-width: 100%;
+          max-height: 480px;
+          object-fit: contain;
+        }
+
+        /* Small previews/links modal styles */
+        .generic-modal-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0,0,0,0.4);
+          z-index: 10001;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          backdrop-filter: blur(4px);
+        }
+
+        .generic-modal-card {
+          background: #ffffff;
+          border-radius: 12px;
+          width: 480px;
+          max-width: 90vw;
+          max-height: 80vh;
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+          overflow: hidden;
+        }
+
+        .generic-modal-header {
+          padding: 14px 20px;
+          border-bottom: 1px solid #ebebeb;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #fafafa;
+        }
+
+        .generic-modal-header h3 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 700;
+        }
+
+        .generic-modal-body {
+          padding: 20px;
+          overflow-y: auto;
+          flex: 1;
+        }
+
+        .generic-modal-footer {
+          padding: 12px 20px;
+          border-top: 1px solid #ebebeb;
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          background: #fafafa;
+        }
+
+        .customizer-btn {
+          padding: 8px 16px;
+          font-size: 13px;
+          font-weight: 600;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          border: 1px solid #babfc3;
+          background: #ffffff;
+          color: #2c3e50;
+        }
+
+        .customizer-btn:hover {
+          background: #f1f2f4;
+        }
+
+        .customizer-btn.primary {
+          background: #008060;
+          border-color: #008060;
+          color: #ffffff;
+        }
+
+        .customizer-btn.primary:hover {
+          background: #006e52;
+        }
+
+        .customizer-btn.danger {
+          background: #d93838;
+          border-color: #d93838;
+          color: #ffffff;
+        }
+
+        .customizer-btn.danger:hover {
+          background: #be2e2e;
+        }
+
+        /* Pagination overrides */
+        .pagination-bar {
+          padding: 12px 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-top: 1px solid #ebebeb;
+          background: #fafafa;
+        }
+
+        .pagination-nav {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+        }
+
+        .pagination-arrow {
+          border: 1px solid #babfc3;
+          background: #ffffff;
+          padding: 6px 10px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+
+        .pagination-arrow:disabled {
+          background: #f1f2f4;
+          color: #8c9196;
+          cursor: not-allowed;
+          border-color: #e1e3e6;
+        }
+
+        .page-num {
+          padding: 6px 12px;
+          font-size: 13px;
+          font-weight: 600;
+          border-radius: 4px;
+          cursor: pointer;
+          border: 1px solid transparent;
+        }
+
+        .page-num.active {
+          background: #e1f5fe;
+          color: #0288d1;
+          border-color: #b3e5fc;
+        }
+      `}</style>
+
+      {/* 🔴 TEMPLATES LIST VIEW */}
+      <div className="templates-tab-container">
+        
+        {/* App Title inside card with tab buttons */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 20px 0 20px" }}>
+          <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1a1a1a" }}>Templates</h1>
+          <button
+            onClick={() => {
+              setSelectedTemplate(null);
+              setIsModalOpen(true);
             }}
-            style={{ padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff", minWidth: "220px" }}
+            className="customizer-btn primary"
           >
-            <option value="">➕ Create New Blueprint...</option>
-            {templates.map(t => (
-              <option key={t.id} value={t.id}>📐 {t.name}</option>
-            ))}
-          </select>
-
-          {selectedTemplate && (
-            <button
-              onClick={handleDeleteTemplate}
-              style={{
-                padding: "8px 16px",
-                background: "#d93838",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                fontWeight: 600,
-                cursor: "pointer",
-                fontSize: "13px"
-              }}
-            >
-              🗑️ Delete Template
-            </button>
-          )}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Create new Template
+          </button>
         </div>
 
-        {/* System Import shortcuts */}
-        {!selectedTemplate && (
-          <div style={{
-            background: "hsla(210, 20%, 97%, 0.8)",
-            border: "1px solid #e1e3e5",
-            borderRadius: "12px",
-            padding: "16px",
-            marginBottom: "24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px"
-          }}>
-            <span style={{ fontWeight: 700, fontSize: "14px", color: "#2c3e50" }}>🚀 Quick Start: Import Built-in System Blueprints</span>
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setTemplateName("Chronos Chronograph watch");
-                  setHeading("Custom Watch Monogram & Dial Engraving");
-                  setLayoutMode("tabs");
-                  setOptions([
-                    {
-                      id: "watch-face-text",
-                      type: "text",
-                      label: "Watch Dial Engraving Initials",
-                      required: true,
-                      priceUpcharge: 5.0,
-                      maxChars: 4,
-                      canvasX: 400,
-                      canvasY: 380,
-                      canvasFontSize: 30,
-                      canvasWidth: 200,
-                      canvasHeight: 100,
-                      canvasRotation: 0
-                    },
-                    {
-                      id: "watch-band-color",
-                      type: "swatch",
-                      label: "Leather Strap Color",
-                      required: true,
-                      priceUpcharge: 0,
-                      choices: "#000000, #3E2723, #1A237E"
-                    }
-                  ]);
-                  shopify.toast.show("Pre-populated Chronos Watch layout!");
-                }}
-                style={{ padding: "8px 14px", background: "#ffffff", border: "1px solid #babfc3", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
-              >
-                ⌚ Chronos Watch Series
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTemplateName("Neon Sign builder");
-                  setHeading("Build Your Custom Neon Glow Sign");
-                  setLayoutMode("stacked");
-                  setOptions([
-                    {
-                      id: "neon-glow-text",
-                      type: "text",
-                      label: "Neon Text Content",
-                      required: true,
-                      priceUpcharge: 10.0,
-                      maxChars: 15,
-                      canvasX: 400,
-                      canvasY: 400,
-                      canvasFontSize: 60,
-                      canvasWidth: 350,
-                      canvasHeight: 150,
-                      canvasRotation: 0
-                    },
-                    {
-                      id: "neon-glow-color",
-                      type: "swatch",
-                      label: "Glow Color Swatch",
-                      required: true,
-                      priceUpcharge: 0,
-                      choices: "#FF007F, #00FFFF, #39FF14, #FFD700"
-                    }
-                  ]);
-                  shopify.toast.show("Pre-populated Neon Sign layout!");
-                }}
-                style={{ padding: "8px 14px", background: "#ffffff", border: "1px solid #babfc3", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
-              >
-                💡 Create Your Neon
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTemplateName("Pillow Monogram blueprint");
-                  setHeading("Custom Monogram Pillow");
-                  setLayoutMode("stacked");
-                  setOptions([
-                    {
-                      id: "pillow-monogram-initials",
-                      type: "text",
-                      label: "Monogram Initials (3 letters)",
-                      required: true,
-                      priceUpcharge: 3.5,
-                      maxChars: 3,
-                      canvasX: 400,
-                      canvasY: 400,
-                      canvasFontSize: 80,
-                      canvasWidth: 200,
-                      canvasHeight: 200,
-                      canvasRotation: 0
-                    }
-                  ]);
-                  shopify.toast.show("Pre-populated Pillow Monogram layout!");
-                }}
-                style={{ padding: "8px 14px", background: "#ffffff", border: "1px solid #babfc3", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}
-              >
-                🛋️ Monogram Pillow Layout
-              </button>
-            </div>
+        {/* Tab switcher */}
+        <div className="templates-tab-bar">
+          <div
+            className={`templates-tab-item ${activeTab === "built_in" ? "active" : ""}`}
+            onClick={() => { setActiveTab("built_in"); setSearchTerm(""); }}
+          >
+            Built-in Templates
           </div>
+          <div
+            className={`templates-tab-item ${activeTab === "yours" ? "active" : ""}`}
+            onClick={() => { setActiveTab("yours"); setSearchTerm(""); }}
+          >
+            Your Templates
+          </div>
+        </div>
+
+        {/* Search bar below tabs */}
+        <div className="search-and-filters">
+          <div className="search-field-wrapper">
+            <svg className="search-field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              type="text"
+              className="search-field-input"
+              placeholder="Search templates..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Tab 1: Built-in Templates */}
+        {activeTab === "built_in" && (
+          <table className="template-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Tags</th>
+                <th style={{ textAlign: "right" }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredBuiltIn.length === 0 ? (
+                <tr>
+                  <td colSpan={3} style={{ textAlign: "center", color: "#6d7175", padding: "40px" }}>
+                    No built-in templates match your search.
+                  </td>
+                </tr>
+              ) : (
+                filteredBuiltIn.map((builtin) => (
+                  <tr key={builtin.id}>
+                    <td style={{ fontWeight: 600 }}>{builtin.name}</td>
+                    <td>
+                      {builtin.tags.map((tag, i) => (
+                        <span key={i} className="badge-tag">{tag}</span>
+                      ))}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                        <button
+                          title="Preview Template Design"
+                          className="action-icon-btn"
+                          onClick={() => {
+                            setSelectedTemplate({
+                              id: builtin.id,
+                              name: builtin.name,
+                              description: builtin.description,
+                              options: builtin.options
+                            });
+                            setIsPreviewModalOpen(true);
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                        <button
+                          title="Duplicate to Your Templates"
+                          className="action-icon-btn"
+                          onClick={() => handleDuplicateBuiltIn(builtin)}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button
+                          className="btn-text-action"
+                          onClick={() => handleOpenLinkModal(builtin.id)}
+                        >
+                          Use Template
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         )}
 
-        {/* Master Workspace Editor Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px", marginTop: "24px" }}>
-          
-          {/* LEFT PANEL: Layers & Control Panel Settings */}
-          <div style={{ background: "#ffffff", padding: "20px", border: "1px solid #e1e3e5", borderRadius: "10px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, marginBottom: "16px", color: "#1a1a1a" }}>
-              📐 Customizer Blueprint Controls
-            </h3>
+        {/* Tab 2: Your Custom Templates */}
+        {activeTab === "yours" && (
+          <>
+            <table className="template-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Description</th>
+                  <th style={{ textAlign: "right" }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedTemplates.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={{ textAlign: "center", color: "#6d7175", padding: "40px" }}>
+                      {templates.length === 0 ? "You haven't created any templates yet. Click \"Create new Template\" to begin." : "No custom templates match your search."}
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedTemplates.map((t: any) => {
+                    // Count GIDs linked to this template ID
+                    const linkedCount = products.filter((p: any) => {
+                      if (p.metafield?.value) {
+                        try {
+                          return JSON.parse(p.metafield.value).templateId === t.id;
+                        } catch (err) {}
+                      }
+                      return false;
+                    }).map((p: any) => p.id);
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div>
-                <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Blueprint Template Name</label>
-                <input
-                  type="text"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                  style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                  placeholder="e.g. Ring Engraving Template"
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Form Header Title</label>
-                  <input
-                    type="text"
-                    value={heading}
-                    onChange={(e) => setHeading(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Layout Mode</label>
-                  <select
-                    value={layoutMode}
-                    onChange={(e) => setLayoutMode(e.target.value as any)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
-                  >
-                    <option value="stacked">Stacked Inline Layout</option>
-                    <option value="tabs">Dynamic Tabs Layout</option>
-                    <option value="modal">Sleek Overlay Modal</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
-                <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "11px", marginBottom: "4px" }}>Theme Accent Color</label>
-                  <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} style={{ width: "100%", height: "30px", border: "none", cursor: "pointer" }} />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "11px", marginBottom: "4px" }}>Button Background</label>
-                  <input type="color" value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} style={{ width: "100%", height: "30px", border: "none", cursor: "pointer" }} />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "11px", marginBottom: "4px" }}>Button Text Color</label>
-                  <input type="color" value={buttonTextColor} onChange={(e) => setButtonTextColor(e.target.value)} style={{ width: "100%", height: "30px", border: "none", cursor: "pointer" }} />
-                </div>
-              </div>
-
-              <hr style={{ border: 0, borderTop: "1px solid #e1e3e5", margin: "8px 0" }} />
-
-              {/* Options Layers list */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontWeight: 700, fontSize: "14px" }}>Customizer Form Fields</span>
-                <button
-                  type="button"
-                  onClick={handleAddOption}
-                  style={{ padding: "6px 12px", background: "#008060", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer", fontSize: "13px", fontWeight: 600 }}
-                >
-                  ➕ Add Input Field
-                </button>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {options.map((opt, idx) => (
-                  <div key={opt.id} style={{ border: "1px solid #e1e3e5", padding: "14px", borderRadius: "8px", background: "#fdfdfd" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                      <span style={{ fontWeight: 700, fontSize: "13px", color: "#008060" }}>Input Layer #{idx + 1}</span>
-                      <button
-                        onClick={() => handleRemoveOption(opt.id)}
-                        style={{ background: "none", border: "none", color: "#d93838", cursor: "pointer", fontSize: "11px", fontWeight: 600 }}
-                      >
-                        🗑️ Remove Field
-                      </button>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "8px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>Label</label>
-                        <input
-                          type="text"
-                          value={opt.label}
-                          onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
-                          style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>Input Type</label>
-                        <select
-                          value={opt.type}
-                          onChange={(e) => handleUpdateOption(opt.id, { type: e.target.value as any })}
-                          style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
-                        >
-                          <option value="text">Single Line Text</option>
-                          <option value="select">Dropdown Choice</option>
-                          <option value="swatch">Color Swatch Palette</option>
-                          <option value="file">Customer Image Upload</option>
-                          <option value="checkbox">Add-on Checkbox</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "8px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <input type="checkbox" id={`req-${opt.id}`} checked={opt.required} onChange={(e) => handleUpdateOption(opt.id, { required: e.target.checked })} style={{ accentColor: "#008060" }} />
-                        <label htmlFor={`req-${opt.id}`} style={{ fontSize: "12px", cursor: "pointer" }}>Is Field Required?</label>
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "2px" }}>Option Upcharge Fee ($)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={opt.priceUpcharge}
-                          onChange={(e) => handleUpdateOption(opt.id, { priceUpcharge: parseFloat(e.target.value) || 0 })}
-                          style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Reusable Choice Set Linking Logic */}
-                    {(opt.type === "select" || opt.type === "swatch" || opt.type === "clipart") && (
-                      <div style={{ borderTop: "1px dashed #e1e3e5", marginTop: "8px", paddingTop: "8px" }}>
-                        <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "6px" }}>
-                          <span style={{ fontSize: "12px", fontWeight: 600 }}>Choices Type:</span>
-                          {opt.type !== "clipart" && (
-                            <label style={{ fontSize: "12px", cursor: "pointer" }}>
-                              <input
-                                type="radio"
-                                name={`choicesType-${opt.id}`}
-                                checked={opt.choicesType !== "global"}
-                                onChange={() => handleUpdateOption(opt.id, { choicesType: "custom" })}
-                              /> Custom List
-                            </label>
+                    return (
+                      <tr key={t.id}>
+                        <td>
+                          <button
+                            onClick={() => {
+                              setSelectedTemplate(t);
+                              setIsModalOpen(true);
+                            }}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              font: "inherit",
+                              fontWeight: 700,
+                              color: "#2c3e50",
+                              cursor: "pointer",
+                              textAlign: "left"
+                            }}
+                          >
+                            {t.name}
+                          </button>
+                          {linkedCount.length > 0 && (
+                            <span style={{ marginLeft: "8px", fontSize: "11px", color: "#008060", background: "rgba(0,128,96,0.08)", padding: "2px 6px", borderRadius: "10px", fontWeight: "bold" }}>
+                              Linked: {linkedCount.length}
+                            </span>
                           )}
-                          <label style={{ fontSize: "12px", cursor: "pointer" }}>
-                            <input
-                              type="radio"
-                              name={`choicesType-${opt.id}`}
-                              checked={opt.type === "clipart" || opt.choicesType === "global"}
-                              onChange={() => handleUpdateOption(opt.id, { choicesType: "global" })}
-                              disabled={opt.type === "clipart"}
-                            /> Link Reusable Set
-                          </label>
-                        </div>
-
-                        {opt.type === "clipart" || opt.choicesType === "global" ? (
-                          <div>
-                            <label style={{ display: "block", fontSize: "11px", color: "#6d7175", marginBottom: "2px" }}>Select Linked Brand Asset Set</label>
-                            <select
-                              value={opt.assetSetId || ""}
-                              onChange={(e) => {
-                                const asset = assets.find(a => a.id === e.target.value);
-                                handleUpdateOption(opt.id, { assetSetId: e.target.value, choices: asset?.value || "" });
-                              }}
-                              style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
+                        </td>
+                        <td style={{ color: "#6d7175", fontSize: "13px" }}>
+                          {t.description || <span style={{ fontStyle: "italic", color: "#b2b2b2" }}>No description provided</span>}
+                        </td>
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                            <button
+                              className="btn-text-action"
+                              onClick={() => handleOpenLinkModal(t.id)}
                             >
-                              <option value="">Choose Asset List...</option>
-                              {opt.type === "swatch"
-                                ? colorAssets.map(c => <option key={c.id} value={c.id}> {c.name}</option>)
-                                : opt.type === "clipart"
-                                ? clipartAssets.map(i => <option key={i.id} value={i.id}>🖼️ {i.name}</option>)
-                                : optionAssets.map(o => <option key={o.id} value={o.id}> {o.name}</option>)
-                              }
-                            </select>
+                              Use Template
+                            </button>
+                            <button
+                              title="Edit Template Blueprint"
+                              className="action-icon-btn"
+                              onClick={() => {
+                                setSelectedTemplate(t);
+                                setIsModalOpen(true);
+                              }}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                            </button>
+                            <button
+                              title="Duplicate Template"
+                              className="action-icon-btn"
+                              onClick={() => handleDuplicateTemplate(t.id)}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </button>
+                            <button
+                              title="Delete Template"
+                              className="action-icon-btn danger"
+                              onClick={() => handleDeleteTemplate(t.id, linkedCount)}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                            </button>
                           </div>
-                        ) : (
-                          <div>
-                            <label style={{ display: "block", fontSize: "11px", color: "#6d7175", marginBottom: "2px" }}>Custom choices (comma-separated list)</label>
-                            <input
-                              type="text"
-                              value={opt.choices || ""}
-                              onChange={(e) => handleUpdateOption(opt.id, { choices: e.target.value })}
-                              style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                              placeholder={opt.type === "swatch" ? "#000000, #FFFFFF" : "Option A, Option B"}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Visual Positioning Settings (Phase 3/4 Parity) */}
-                    {(opt.type === "text" || opt.type === "clipart" || opt.type === "file") && (
-                      <div style={{ borderTop: "1px dashed #e1e3e5", marginTop: "12px", paddingTop: "8px" }}>
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#2c3e50", display: "block", marginBottom: "6px" }}>🎯 Visual Canvas Positioning</span>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "8px" }}>
-                          <div>
-                            <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Center X (px)</label>
-                            <input
-                              type="number"
-                              value={opt.canvasX ?? 400}
-                              onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
-                              style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Center Y (px)</label>
-                            <input
-                              type="number"
-                              value={opt.canvasY ?? 400}
-                              onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
-                              style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                            />
-                          </div>
-                          {(opt.type === "clipart" || opt.type === "file") ? (
-                            <>
-                              <div>
-                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Width (px)</label>
-                                <input
-                                  type="number"
-                                  value={opt.canvasWidth ?? 250}
-                                  onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
-                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                                />
-                              </div>
-                              <div>
-                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Height (px)</label>
-                                <input
-                                  type="number"
-                                  value={opt.canvasHeight ?? 250}
-                                  onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
-                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                                />
-                              </div>
-                            </>
-                          ) : opt.type === "text" ? (
-                            <>
-                              <div>
-                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Font Size (px)</label>
-                                <input
-                                  type="number"
-                                  value={opt.canvasFontSize ?? 48}
-                                  onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
-                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                                />
-                              </div>
-                              <div>
-                                <label style={{ display: "block", fontSize: "10px", color: "#6d7175" }}>Rotate (deg)</label>
-                                <input
-                                  type="number"
-                                  value={opt.canvasRotation ?? 0}
-                                  onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
-                                  style={{ width: "100%", padding: "4px", fontSize: "11px", borderRadius: "4px", border: "1px solid #babfc3" }}
-                                />
-                              </div>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Product Linker and Sync Buttons */}
-            <div style={{ marginTop: "24px", display: "flex", gap: "12px" }}>
-              <button
-                onClick={() => setShowProductLinker(!showProductLinker)}
-                style={{
-                  padding: "10px 18px",
-                  background: "#2c3e50",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontSize: "14px"
-                }}
-              >
-                🔗 Link to Products ({linkedProducts.length})
-              </button>
-              
-              <button
-                onClick={handleSaveTemplate}
-                style={{
-                  padding: "10px 18px",
-                  background: "#008060",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "6px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontSize: "14px",
-                  flex: 1
-                }}
-              >
-                💾 Save blueprint & Bulk Sync Metafields
-              </button>
-            </div>
-
-            {/* Linkage products picker popup wrapper */}
-            {showProductLinker && (
-              <div style={{ marginTop: "16px", padding: "16px", border: "1px solid #babfc3", borderRadius: "8px", background: "#f9fafb" }}>
-                <h4 style={{ fontWeight: 700, fontSize: "14px", marginBottom: "8px" }}>Select Products to Apply Personalizer Layout:</h4>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "250px", overflowY: "auto", background: "#fff", padding: "8px", borderRadius: "6px", border: "1px solid #e1e3e5" }}>
-                  {products.map((p: any) => (
-                    <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "4px", cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={linkedProducts.includes(p.id)}
-                        onChange={() => toggleProductLink(p.id)}
-                        style={{ accentColor: "#008060" }}
-                      />
-                      {p.featuredImage?.url ? (
-                        <img src={p.featuredImage.url} alt="" style={{ width: "24px", height: "24px", objectFit: "cover", borderRadius: "2px" }} />
-                      ) : (
-                        <span>📦</span>
-                      )}
-                      <span style={{ fontSize: "13px", fontWeight: 500 }}>{p.title}</span>
-                    </label>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+            
+            {/* Pagination Controls */}
+            {totalItems > 0 && (
+              <div className="pagination-bar">
+                <div style={{ display: "flex", gap: "10px", alignItems: "center", fontSize: "13px" }}>
+                  <span>Show</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(parseInt(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
+                  >
+                    {[5, 10, 15, 20, 30, 50, 100].map(size => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                  <span style={{ color: "#6d7175" }}>
+                    Showing {Math.min(totalItems, (currentPage - 1) * pageSize + 1)} - {Math.min(totalItems, currentPage * pageSize)} of {totalItems} results
+                  </span>
+                </div>
+                
+                <div className="pagination-nav">
+                  <button
+                    className="pagination-arrow"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  >
+                    ←
+                  </button>
+                  {Array.from({ length: totalPages }).map((_, i) => (
+                    <button
+                      key={i}
+                      className={`page-num ${currentPage === i + 1 ? "active" : ""}`}
+                      onClick={() => setCurrentPage(i + 1)}
+                    >
+                      {i + 1}
+                    </button>
                   ))}
+                  <button
+                    className="pagination-arrow"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  >
+                    →
+                  </button>
                 </div>
               </div>
             )}
-          </div>
+          </>
+        )}
+      </div>
 
-          {/* RIGHT PANEL: Live Preview WYSIWYG Canvas */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div style={{ background: "#ffffff", padding: "20px", border: "1px solid #e1e3e5", borderRadius: "10px", position: "sticky", top: "20px" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: 700, marginBottom: "16px", color: "#1a1a1a" }}>
-                🎨 Live WYSIWYG Preview
-              </h3>
-
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={handleCanvasMouseDown}
-                  onMouseMove={handleCanvasMouseMove}
-                  onMouseUp={handleCanvasMouseUp}
-                  onMouseLeave={handleCanvasMouseUp}
-                  style={{
-                    width: "100%",
-                    maxWidth: "280px",
-                    height: "280px",
-                    border: "1px solid #babfc3",
-                    borderRadius: "8px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
-                    cursor: dragState.isDragging ? "grabbing" : dragState.isResizing ? "nwse-resize" : "pointer"
+      {/* 🟢 TEMPLATE CUSTOMIZER OVERLAY MODAL */}
+      {isModalOpen && (
+        <div className="customizer-overlay">
+          <div className="customizer-card">
+            
+            {/* Customizer Header */}
+            <div className="customizer-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <button
+                  className="customizer-btn"
+                  onClick={() => setIsModalOpen(false)}
+                  style={{ border: "none", background: "transparent", fontSize: "16px", padding: "4px 8px" }}
+                >
+                  ✕
+                </button>
+                <h2>Template Customizer: <span style={{ color: "#008060" }}>{templateName || "New Template"}</span></h2>
+              </div>
+              
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  className="customizer-btn"
+                  onClick={() => {
+                    // Open product linker popup directly inside customizer
+                    setLinkingTemplateId(selectedTemplate?.id || "temp-draft");
+                    setIsLinkModalOpen(true);
                   }}
-                />
+                >
+                  🔗 Link to Products ({linkedProducts.length})
+                </button>
+                <button
+                  className="customizer-btn primary"
+                  onClick={handleSaveTemplate}
+                >
+                  💾 Save Template
+                </button>
+              </div>
+            </div>
 
-                {/* Canvas dynamic mock controls */}
-                <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
-                  <span style={{ fontWeight: 700, fontSize: "12px", color: "#6d7175" }}>Canvas Tester Values</span>
-                  <div>
-                    <label style={{ display: "block", fontSize: "11px", marginBottom: "2px" }}>Sample Engraving Text</label>
-                    <input
-                      type="text"
-                      value={previewText}
-                      onChange={(e) => setPreviewText(e.target.value)}
-                      style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff", fontSize: "12px" }}
-                    />
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                    <div>
-                      <label style={{ display: "block", fontSize: "11px", marginBottom: "2px" }}>Sample Font Set</label>
-                      <select
-                        value={previewFont}
-                        onChange={(e) => setPreviewFont(e.target.value)}
-                        style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff", fontSize: "12px" }}
-                      >
-                        <option value="Arial">Arial (System)</option>
-                        <option value="Times New Roman">Times New Roman</option>
-                        {fontAssets.map(f => (
-                          <option key={f.id} value={f.name}>{f.name} (Uploaded)</option>
-                        ))}
-                      </select>
+            {/* Split pane Workspace */}
+            <div className="customizer-pane">
+              
+              {/* LEFT SIDEBAR: Config & Elements */}
+              <div className="customizer-sidebar">
+                
+                {/* View settings tab bar */}
+                <div className="customizer-subtabs">
+                  <div className="customizer-subtab active">Main View</div>
+                </div>
+
+                {/* Sidebar Scrollable accordion panels */}
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  
+                  {/* Accordion 1: Basic Settings */}
+                  <details className="sidebar-accordion" open>
+                    <summary>Basic Settings</summary>
+                    <div className="accordion-content">
+                      <div className="input-group">
+                        <label>Template Name</label>
+                        <input
+                          type="text"
+                          className="custom-input"
+                          value={templateName}
+                          onChange={(e) => setTemplateName(e.target.value)}
+                          placeholder="e.g. Chronos C-200 Watch Face"
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Description</label>
+                        <input
+                          type="text"
+                          className="custom-input"
+                          value={templateDescription}
+                          onChange={(e) => setTemplateDescription(e.target.value)}
+                          placeholder="Optional helper details..."
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Form Header Title</label>
+                        <input
+                          type="text"
+                          className="custom-input"
+                          value={heading}
+                          onChange={(e) => setHeading(e.target.value)}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>Layout Mode</label>
+                        <select
+                          className="custom-input"
+                          value={layoutMode}
+                          onChange={(e) => setLayoutMode(e.target.value as any)}
+                        >
+                          <option value="stacked">Stacked Layout (Inline)</option>
+                          <option value="tabs">Dynamic Tabs</option>
+                          <option value="modal">Sleek Overlay Modal</option>
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label>View Name</label>
+                        <input
+                          type="text"
+                          className="custom-input"
+                          value={viewName}
+                          onChange={(e) => setViewName(e.target.value)}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label>View Background</label>
+                        <select
+                          className="custom-input"
+                          value={assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } }) ? viewBackground : (viewBackground === "Blank Canvas" ? "Blank Canvas" : "custom")}
+                          onChange={(e) => {
+                            if (e.target.value === "custom") {
+                              setViewBackground("");
+                            } else {
+                              setViewBackground(e.target.value);
+                            }
+                          }}
+                        >
+                          <option value="Blank Canvas">Blank Canvas</option>
+                          {assets.filter(a => a.type === "IMAGE" || a.type === "IMAGES").map(a => {
+                            try {
+                              const parsed = JSON.parse(a.value);
+                              return <option key={a.id} value={parsed.url}>{a.name}</option>;
+                            } catch(e) { return null; }
+                          })}
+                          {viewBackground !== "Blank Canvas" && !assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } }) && (
+                            <option value="custom">Custom Image URL / Path</option>
+                          )}
+                          {viewBackground === "" && (
+                            <option value="custom">Custom Image URL / Path</option>
+                          )}
+                        </select>
+                        {(viewBackground !== "Blank Canvas" && (!assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } }) || viewBackground === "")) && (
+                          <input
+                            type="text"
+                            className="custom-input"
+                            style={{ marginTop: "4px" }}
+                            value={viewBackground}
+                            onChange={(e) => setViewBackground(e.target.value)}
+                            placeholder="Enter image URL or relative path..."
+                          />
+                        )}
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                        <div className="input-group">
+                          <label>Canvas Width (px)</label>
+                          <input
+                            type="number"
+                            min="500"
+                            max="5000"
+                            className="custom-input"
+                            value={canvasW}
+                            onChange={(e) => setCanvasW(Math.max(500, Math.min(5000, parseInt(e.target.value) || 1000)))}
+                          />
+                        </div>
+                        <div className="input-group">
+                          <label>Canvas Height (px)</label>
+                          <input
+                            type="number"
+                            min="500"
+                            max="5000"
+                            className="custom-input"
+                            value={canvasH}
+                            onChange={(e) => setCanvasH(Math.max(500, Math.min(5000, parseInt(e.target.value) || 1000)))}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: "11px", marginBottom: "2px" }}>Sample Color</label>
-                      <select
-                        value={previewColor}
-                        onChange={(e) => setPreviewColor(e.target.value)}
-                        style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff", fontSize: "12px" }}
+                  </details>
+
+                  {/* Accordion 2: Cart and Order settings */}
+                  <details className="sidebar-accordion">
+                    <summary>Cart and Order settings</summary>
+                    <div className="accordion-content">
+                      <div className="toggle-switch-wrapper">
+                        <span className="toggle-switch-label">Generate Preview Image</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={generatePreview}
+                            onChange={(e) => setGeneratePreview(e.target.checked)}
+                          />
+                          <span className="toggle-slider" />
+                        </label>
+                      </div>
+                      <div className="input-group">
+                        <label>Preview Size quality</label>
+                        <select
+                          className="custom-input"
+                          value={previewSize}
+                          onChange={(e) => setPreviewSize(e.target.value)}
+                        >
+                          <option value="Compressed">Compressed JPG</option>
+                          <option value="High">Full Quality PNG</option>
+                        </select>
+                      </div>
+                      <div className="toggle-switch-wrapper">
+                        <span className="toggle-switch-label">Include Additional Files</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={additionalFile}
+                            onChange={(e) => setAdditionalFile(e.target.checked)}
+                          />
+                          <span className="toggle-slider" />
+                        </label>
+                      </div>
+                      <div className="toggle-switch-wrapper">
+                        <span className="toggle-switch-label">Hide Background in order image</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={hideBackground}
+                            onChange={(e) => setHideBackground(e.target.checked)}
+                          />
+                          <span className="toggle-slider" />
+                        </label>
+                      </div>
+                      <div className="toggle-switch-wrapper">
+                        <span className="toggle-switch-label">Custom cart labels override</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={customCartLabel}
+                            onChange={(e) => setCustomCartLabel(e.target.checked)}
+                          />
+                          <span className="toggle-slider" />
+                        </label>
+                      </div>
+                    </div>
+                  </details>
+
+                  {/* Accordion 3: Element options tree */}
+                  <details className="sidebar-accordion" open>
+                    <summary>Elements Tree</summary>
+                    <div className="accordion-content">
+                      
+                      <div className="toggle-switch-wrapper" style={{ borderBottom: "1px dashed #ebebeb", paddingBottom: "10px" }}>
+                        <span className="toggle-switch-label" style={{ fontWeight: 600, color: "#6d7175", fontSize: "11px", textTransform: "uppercase" }}>Show Live Editor Bounds</span>
+                        <label className="toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={livePreview}
+                            onChange={(e) => setLivePreview(e.target.checked)}
+                          />
+                          <span className="toggle-slider" />
+                        </label>
+                      </div>
+
+                      {options.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: "20px 0", color: "#8c9196", fontSize: "12px" }}>
+                          There are no elements under this view.
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          {options.map((opt, idx) => {
+                            const isSelected = selectedOptionId === opt.id;
+                            return (
+                              <div
+                                key={opt.id}
+                                style={{
+                                  border: isSelected ? "1px solid #008060" : "1px solid #ebebeb",
+                                  background: isSelected ? "#f4fbf7" : "#fafafa",
+                                  padding: "12px",
+                                  borderRadius: "8px"
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                  <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#008060" : "#2c3e50" }}>
+                                    Option Layer #{idx + 1}
+                                  </span>
+                                  <button
+                                    onClick={() => handleRemoveOption(opt.id)}
+                                    style={{ border: "none", background: "none", color: "#d93838", fontSize: "11px", fontWeight: "bold", cursor: "pointer" }}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                                <input
+                                  type="text"
+                                  className="custom-input"
+                                  style={{ width: "100%", padding: "4px 8px", fontSize: "12px", marginBottom: "8px" }}
+                                  value={opt.label}
+                                  onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
+                                />
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+                                  <div>
+                                    <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase" }}>Type</label>
+                                    <select
+                                      className="custom-input"
+                                      style={{ width: "100%", padding: "4px", fontSize: "11px" }}
+                                      value={opt.type}
+                                      onChange={(e) => handleUpdateOption(opt.id, { type: e.target.value as any })}
+                                    >
+                                      <option value="text">Single Line Text</option>
+                                      <option value="select">Dropdown Choice</option>
+                                      <option value="swatch">Color Swatch Palette</option>
+                                      <option value="file">File Decal Upload</option>
+                                      <option value="checkbox">Option Checkbox</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase" }}>Upcharge ($)</label>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      className="custom-input"
+                                      style={{ width: "100%", padding: "4px", fontSize: "11px" }}
+                                      value={opt.priceUpcharge}
+                                      onChange={(e) => handleUpdateOption(opt.id, { priceUpcharge: parseFloat(e.target.value) || 0 })}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Choices Sets */}
+                                {(opt.type === "select" || opt.type === "swatch") && (
+                                  <div style={{ marginTop: "6px", borderTop: "1px dashed #e1e3e6", paddingTop: "6px" }}>
+                                    <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "4px" }}>
+                                      <label style={{ fontSize: "10px", fontWeight: "bold" }}>Choices:</label>
+                                      <label style={{ fontSize: "10px", cursor: "pointer" }}>
+                                        <input
+                                          type="radio"
+                                          name={`choicesType-${opt.id}`}
+                                          checked={opt.choicesType !== "global"}
+                                          onChange={() => handleUpdateOption(opt.id, { choicesType: "custom" })}
+                                        /> Custom
+                                      </label>
+                                      <label style={{ fontSize: "10px", cursor: "pointer" }}>
+                                        <input
+                                          type="radio"
+                                          name={`choicesType-${opt.id}`}
+                                          checked={opt.choicesType === "global"}
+                                          onChange={() => handleUpdateOption(opt.id, { choicesType: "global" })}
+                                        /> Asset Link
+                                      </label>
+                                    </div>
+                                    {opt.choicesType === "global" ? (
+                                      <select
+                                        className="custom-input"
+                                        style={{ width: "100%", padding: "4px", fontSize: "11px" }}
+                                        value={opt.assetSetId || ""}
+                                        onChange={(e) => {
+                                          const asset = assets.find(a => a.id === e.target.value);
+                                          handleUpdateOption(opt.id, { assetSetId: e.target.value, choices: asset?.value || "" });
+                                        }}
+                                      >
+                                        <option value="">Select Asset...</option>
+                                        {opt.type === "swatch"
+                                          ? colorAssets.map(c => <option key={c.id} value={c.id}>🎨 {c.name}</option>)
+                                          : optionAssets.map(o => <option key={o.id} value={o.id}>📋 {o.name}</option>)
+                                        }
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        className="custom-input"
+                                        style={{ width: "100%", padding: "4px", fontSize: "11px" }}
+                                        placeholder={opt.type === "swatch" ? "#000, #fff" : "Option A, Option B"}
+                                        value={opt.choices || ""}
+                                        onChange={(e) => handleUpdateOption(opt.id, { choices: e.target.value })}
+                                      />
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Coordinate layouts settings */}
+                                {(opt.type === "text" || opt.type === "clipart" || opt.type === "file") && (
+                                  <div style={{ marginTop: "8px", borderTop: "1px dashed #e1e3e6", paddingTop: "8px" }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                        <span style={{ fontSize: "10px", color: "#6d7175" }}>X:</span>
+                                        <input
+                                          type="number"
+                                          className="custom-input"
+                                          style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                          value={opt.canvasX ?? 500}
+                                          onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
+                                        />
+                                      </div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                        <span style={{ fontSize: "10px", color: "#6d7175" }}>Y:</span>
+                                        <input
+                                          type="number"
+                                          className="custom-input"
+                                          style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                          value={opt.canvasY ?? 500}
+                                          onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "4px" }}>
+                                      {opt.type === "text" ? (
+                                        <>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>Size:</span>
+                                            <input
+                                              type="number"
+                                              className="custom-input"
+                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              value={opt.canvasFontSize ?? 80}
+                                              onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
+                                            />
+                                          </div>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>Rot:</span>
+                                            <input
+                                              type="number"
+                                              className="custom-input"
+                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              value={opt.canvasRotation ?? 0}
+                                              onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
+                                            />
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>W:</span>
+                                            <input
+                                              type="number"
+                                              className="custom-input"
+                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              value={opt.canvasWidth ?? 300}
+                                              onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
+                                            />
+                                          </div>
+                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>H:</span>
+                                            <input
+                                              type="number"
+                                              className="custom-input"
+                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              value={opt.canvasHeight ?? 300}
+                                              onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
+                                            />
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <button
+                        className="customizer-btn"
+                        style={{ width: "100%", border: "1px dashed #008060", color: "#008060", display: "flex", justifyContent: "center", marginTop: "12px" }}
+                        onClick={handleAddOption}
                       >
-                        <option value="#000000">Black</option>
-                        <option value="#E63946">Crimson</option>
-                        <option value="#457B9D">Slate Blue</option>
-                        <option value="#1D3557">Dark Navy</option>
-                      </select>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add New Element
+                      </button>
+                    </div>
+                  </details>
+                </div>
+              </div>
+
+              {/* RIGHT preview panels */}
+              <div className="customizer-main">
+                
+                {/* Visual Card wrapping Canvas */}
+                <div className="canvas-frame-container">
+                  {/* Info Row */}
+                  <div style={{ display: "flex", justifyContent: "space-between", width: "100%", borderBottom: "1px solid #ebebeb", paddingBottom: "10px" }}>
+                    <span style={{ fontSize: "14px", fontWeight: "bold" }}>Preview: {templateName}</span>
+                    <span style={{ fontSize: "14px", fontWeight: "bold", color: "#008060" }}>Upcharge Sum: ${optionPriceSum.toFixed(2)}</span>
+                  </div>
+
+                  <canvas
+                    ref={canvasRef}
+                    onMouseDown={handleCanvasMouseDown}
+                    onMouseMove={handleCanvasMouseMove}
+                    onMouseUp={handleCanvasMouseUp}
+                    onMouseLeave={handleCanvasMouseUp}
+                    className="canvas-interactive"
+                    style={{
+                      width: "100%",
+                      maxWidth: "450px",
+                      aspectRatio: `${canvasW}/${canvasH}`
+                    }}
+                  />
+
+                  {/* Canvas Dynamic testing fields */}
+                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", background: "#f8f9fa", padding: "12px", borderRadius: "8px", marginTop: "6px" }}>
+                    <span style={{ fontWeight: 700, fontSize: "11px", color: "#6d7175", textTransform: "uppercase" }}>Tester controls</span>
+                    
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                      <div className="input-group">
+                        <label style={{ fontSize: "10px" }}>Sample Text</label>
+                        <input
+                          type="text"
+                          className="custom-input"
+                          style={{ padding: "6px", fontSize: "12px" }}
+                          value={previewText}
+                          onChange={(e) => setPreviewText(e.target.value)}
+                        />
+                      </div>
+                      <div className="input-group">
+                        <label style={{ fontSize: "10px" }}>Sample Font</label>
+                        <select
+                          className="custom-input"
+                          style={{ padding: "6px", fontSize: "12px" }}
+                          value={previewFont}
+                          onChange={(e) => setPreviewFont(e.target.value)}
+                        >
+                          <option value="Arial">Arial (System)</option>
+                          <option value="Times New Roman">Times New Roman</option>
+                          {fontAssets.map(f => (
+                            <option key={f.id} value={f.name}>{f.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="input-group">
+                        <label style={{ fontSize: "10px" }}>Sample Color</label>
+                        <select
+                          className="custom-input"
+                          style={{ padding: "6px", fontSize: "12px" }}
+                          value={previewColor}
+                          onChange={(e) => setPreviewColor(e.target.value)}
+                        >
+                          <option value="#000000">Black</option>
+                          <option value="#E63946">Crimson</option>
+                          <option value="#457B9D">Slate Blue</option>
+                          <option value="#1D3557">Dark Navy</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>
+
               </div>
             </div>
+            
           </div>
-
         </div>
+      )}
 
-      </s-section>
+      {/* 👁️ BUILT-IN TEMPLATE PREVIEW MODAL */}
+      {isPreviewModalOpen && selectedTemplate && (
+        <div className="generic-modal-overlay">
+          <div className="generic-modal-card" style={{ width: "500px" }}>
+            <div className="generic-modal-header">
+              <h3>Built-in Preview: {selectedTemplate.name}</h3>
+              <button
+                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
+                onClick={() => setIsPreviewModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="generic-modal-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+              <p style={{ alignSelf: "flex-start", margin: 0, fontSize: "13px", color: "#6d7175" }}>
+                {selectedTemplate.description}
+              </p>
+              
+              {/* Canvas Preview in Modal */}
+              <canvas
+                ref={(node) => {
+                  if (node) {
+                    const ctx = node.getContext("2d");
+                    if (ctx) {
+                      node.width = 600;
+                      node.height = 600;
+                      ctx.clearRect(0,0,600,600);
+                      ctx.fillStyle = "#ffffff";
+                      ctx.fillRect(0,0,600,600);
+                      
+                      try {
+                        const config = JSON.parse(selectedTemplate.options);
+                        const opts = config.options || [];
+                        
+                        opts.forEach((opt: any) => {
+                          ctx.save();
+                          const x = opt.canvasX ?? 300;
+                          const y = opt.canvasY ?? 300;
+                          ctx.translate(x * 0.6, y * 0.6); // Scale to 360 size
+                          
+                          if (opt.type === "text") {
+                            ctx.fillStyle = "#1a1a1a";
+                            ctx.textAlign = "center";
+                            ctx.textBaseline = "middle";
+                            ctx.font = `bold ${opt.canvasFontSize * 0.6 || 36}px Arial`;
+                            ctx.fillText(opt.label, 0, 0);
+                          } else {
+                            const renderW = (opt.canvasWidth || 200) * 0.6;
+                            const renderH = (opt.canvasHeight || 200) * 0.6;
+                            ctx.fillStyle = "rgba(0,128,96,0.06)";
+                            ctx.strokeStyle = "#008060";
+                            ctx.lineWidth = 2;
+                            ctx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+                            ctx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
+                            
+                            ctx.fillStyle = "#008060";
+                            ctx.font = "12px Arial";
+                            ctx.textAlign = "center";
+                            ctx.fillText(opt.label, 0, 0);
+                          }
+                          ctx.restore();
+                        });
+                      } catch(e) {}
+                    }
+                  }
+                }}
+                style={{ width: "300px", height: "300px", border: "1px solid #d2d5d8", borderRadius: "6px" }}
+              />
+            </div>
+            <div className="generic-modal-footer">
+              <button
+                className="customizer-btn"
+                onClick={() => setIsPreviewModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                className="customizer-btn primary"
+                onClick={() => {
+                  handleDuplicateBuiltIn(selectedTemplate);
+                  setIsPreviewModalOpen(false);
+                }}
+              >
+                Duplicate blueprint
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔗 PRODUCT LINKER SELECTION MODAL */}
+      {isLinkModalOpen && (
+        <div className="generic-modal-overlay">
+          <div className="generic-modal-card">
+            <div className="generic-modal-header">
+              <h3>Link template to Shopify store products</h3>
+              <button
+                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
+                onClick={() => setIsLinkModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="generic-modal-body" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <span style={{ fontSize: "13px", color: "#6d7175" }}>
+                Select the products below to synchronize and enable this template configuration. Previously linked products that you uncheck will have their configurations disabled.
+              </span>
+              
+              <div style={{
+                maxHeight: "300px",
+                overflowY: "auto",
+                border: "1px solid #ebebeb",
+                borderRadius: "6px",
+                padding: "8px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px"
+              }}>
+                {products.length === 0 ? (
+                  <span style={{ padding: "20px", textAlign: "center", color: "#8c9196" }}>No products found in this store</span>
+                ) : (
+                  products.map((p: any) => {
+                    const isLinked = linkedProducts.includes(p.id);
+                    return (
+                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px", borderRadius: "4px", cursor: "pointer", background: isLinked ? "#f0fbf7" : "#ffffff" }}>
+                        <input
+                          type="checkbox"
+                          checked={isLinked}
+                          onChange={() => toggleProductLink(p.id)}
+                          style={{ accentColor: "#008060", cursor: "pointer" }}
+                        />
+                        {p.featuredImage?.url ? (
+                          <img src={p.featuredImage.url} alt="" style={{ width: "32px", height: "32px", objectFit: "cover", borderRadius: "4px" }} />
+                        ) : (
+                          <div style={{ width: "32px", height: "32px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
+                        )}
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#2c3e50" }}>{p.title}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="generic-modal-footer">
+              <button
+                className="customizer-btn"
+                onClick={() => setIsLinkModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="customizer-btn primary"
+                onClick={handleSaveProductLinks}
+              >
+                Apply Links
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </s-page>
   );
 }
