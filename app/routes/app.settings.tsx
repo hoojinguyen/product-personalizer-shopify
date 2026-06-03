@@ -4,6 +4,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import Editor from "@monaco-editor/react";
 
 // Loader: Fetch or seed the global AppSettings for this shop
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -85,7 +86,12 @@ export default function AppSettingsPanel() {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
-  // State configurations
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // State configurations (Persisted in DB)
   const [layoutMode, setLayoutMode] = useState(settings.layoutMode);
   const [brandColor, setBrandColor] = useState(settings.brandColor);
   const [buttonColor, setButtonColor] = useState(settings.buttonColor);
@@ -98,15 +104,81 @@ export default function AppSettingsPanel() {
   const [customCss, setCustomCss] = useState(settings.customCss || "");
   const [customJs, setCustomJs] = useState(settings.customJs || "");
 
-  // Tab preview simulation helpers
-  const [previewText, setPreviewText] = useState("Jane");
+  // Category management
+  const [activeCategory, setActiveCategory] = useState("styling");
+
+  // Mock settings configuration states (UX Spec)
+  const [fieldStyle, setFieldStyle] = useState("Normal");
+  const [stickyPreview, setStickyPreview] = useState(true);
+  const [zoomHover, setZoomHover] = useState(false);
+  const [instructionDisplayType, setInstructionDisplayType] = useState("question");
+  const [globalPaddingTop, setGlobalPaddingTop] = useState(0);
+  const [globalPaddingBottom, setGlobalPaddingBottom] = useState(0);
+  const [globalPaddingLeft, setGlobalPaddingLeft] = useState(0);
+  const [globalPaddingRight, setGlobalPaddingRight] = useState(0);
+  const [globalMarginTop, setGlobalMarginTop] = useState(0);
+  const [globalMarginBottom, setGlobalMarginBottom] = useState(20);
+  const [globalMarginLeft, setGlobalMarginLeft] = useState(0);
+  const [globalMarginRight, setGlobalMarginRight] = useState(0);
+
+  const [globalBgColor, setGlobalBgColor] = useState("#ffffff");
+  const [globalLabelColor, setGlobalLabelColor] = useState("#000000");
+  const [globalInputColor, setGlobalInputColor] = useState("#000000");
+  const [globalBorderColor, setGlobalBorderColor] = useState("#dddddd");
+  const [swatchBorderColor, setSwatchBorderColor] = useState("#dddddd");
+  const [activeSwatchBorderColor, setActiveSwatchBorderColor] = useState("#000000");
+  const [activeSwatchBgColor, setActiveSwatchBgColor] = useState("#f0f0f0");
+  const [tooltipBgColor, setTooltipBgColor] = useState("#cccccc");
+  const [tooltipIconColor, setTooltipIconColor] = useState("#3d4246");
+
+  // Mock Text states
+  const [personalizeBtnText, setPersonalizeBtnText] = useState("Personalize");
+  const [instructionsText, setInstructionsText] = useState("What to engrave?");
+  const [selectSizeText, setSelectSizeText] = useState("Select Size");
+  const [engraveTextLabel, setEngraveTextLabel] = useState("Engrave Initials");
+  const [charLimit, setCharLimit] = useState(20);
+
+  // Mock Image specs
+  const [maxImageSize, setMaxImageSize] = useState("10MB");
+  const [allowedJpg, setAllowedJpg] = useState(true);
+  const [allowedPng, setAllowedPng] = useState(true);
+  const [allowedSvg, setAllowedSvg] = useState(false);
+
+  // Mock Checkbox spacing
+  const [dropdownSpacing, setDropdownSpacing] = useState("compact");
+  const [optionsColumns, setOptionsColumns] = useState("1");
+
+  // Mock Pricing format
+  const [currencySymbol, setCurrencySymbol] = useState("$");
+  const [showUpchargeDetails, setShowUpchargeDetails] = useState(true);
+
+  // Storefront preview states
+  const [previewText, setPreviewText] = useState("Amelia");
   const [previewColor, setPreviewColor] = useState("#000000");
+  const [previewFont, setPreviewFont] = useState("Arial");
+  const [previewSize, setPreviewSize] = useState("Medium");
+  const [previewMaterial, setPreviewMaterial] = useState("Wood");
+  const [mockProductType, setMockProductType] = useState("backpack");
+
+  // Check dirty state
+  const isDirty =
+    layoutMode !== settings.layoutMode ||
+    brandColor !== settings.brandColor ||
+    buttonColor !== settings.buttonColor ||
+    buttonTextColor !== settings.buttonTextColor ||
+    popupType !== settings.popupType ||
+    showQuantity !== settings.showQuantity ||
+    cartRedirect !== settings.cartRedirect ||
+    exportFormat !== settings.exportFormat ||
+    dpiResolution !== settings.dpiResolution ||
+    customCss !== (settings.customCss || "") ||
+    customJs !== (settings.customJs || "");
 
   useEffect(() => {
     if (fetcher.data?.success) {
       shopify.toast.show("Global app settings saved successfully!");
     } else if (fetcher.data?.error) {
-      shopify.toast.show(`Error saving: ${fetcher.data.error}`);
+      shopify.toast.show(`Error saving settings: ${fetcher.data.error}`);
     }
   }, [fetcher.data, shopify]);
 
@@ -130,305 +202,1067 @@ export default function AppSettingsPanel() {
     );
   };
 
+  const handleDiscard = () => {
+    setLayoutMode(settings.layoutMode);
+    setBrandColor(settings.brandColor);
+    setButtonColor(settings.buttonColor);
+    setButtonTextColor(settings.buttonTextColor);
+    setPopupType(settings.popupType);
+    setShowQuantity(settings.showQuantity);
+    setCartRedirect(settings.cartRedirect);
+    setExportFormat(settings.exportFormat);
+    setDpiResolution(settings.dpiResolution);
+    setCustomCss(settings.customCss || "");
+    setCustomJs(settings.customJs || "");
+    shopify.toast.show("Changes discarded.");
+  };
+
+  const categories = [
+    { id: "installation", name: "🔌 Installation", desc: "Active themes & app blocks" },
+    { id: "styling", name: "🎨 Styling & Layout", desc: "Accent colors, padding, margins" },
+    { id: "popup", name: "📐 Popup Dimensions", desc: "Modal layout customization" },
+    { id: "text", name: "✍️ Text & Translations", desc: "Labels, character limits, buttons" },
+    { id: "image", name: "🖼️ Image Upload Specs", desc: "Upload size constraints & formats" },
+    { id: "swatches", name: "🔴 Swatches & Choices", desc: "Border styles & hover details" },
+    { id: "dropdown", name: "🔘 Dropdowns & Checkboxes", desc: "Spacings & layout alignments" },
+    { id: "cart", name: "🛒 Add to Cart & Checkout", desc: "Redirects & checkout behaviors" },
+    { id: "export", name: "📄 Export & DPI formats", desc: "Vector PDF & DPI resolution specs" },
+    { id: "pricing", name: "💰 Additional Pricing", desc: "Price layouts & format templates" },
+    { id: "css", name: "💻 Custom CSS Overrides", desc: "Monaco editor stylesheet injection" },
+    { id: "js", name: "⚙️ Custom JS Callbacks", desc: "Monaco editor script tracking" }
+  ];
+
   return (
-    <s-page heading="Global App Settings">
-      <s-section heading="Personalizer Preferences Console">
-        <s-paragraph>
-          Configure the default presentation style, shopper checkouts, image exports, and developer script overrides. These settings apply globally across all customizable products.
-        </s-paragraph>
+    <div className="settings-page">
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Playfair+Display:ital@0;1&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
-        <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: "24px", marginTop: "24px" }}>
-          
-          {/* Settings Control Panel */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            
-            {/* Theme Customizer & Aesthetics */}
-            <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
-              <s-stack direction="block" gap={"small" as any}>
-                <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>🎨 Styling & Color Palette</span>
-                <s-paragraph>Establish the primary brand colors that appear on custom storefront controls.</s-paragraph>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", marginTop: "8px" }}>
+      <style>{`
+        .settings-page {
+          font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+          background: #f6f6f7;
+          min-height: 100vh;
+          padding: 20px;
+          color: #202223;
+        }
+        .header-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+          border-bottom: 1px solid #e1e3e5;
+          padding-bottom: 16px;
+        }
+        .header-title {
+          font-size: 24px;
+          font-weight: 700;
+          color: #1a1a1a;
+          margin: 0;
+        }
+        .dirty-alert-banner {
+          background: #fff4e5;
+          border: 1px solid #ffe0b2;
+          color: #b78103;
+          padding: 12px 20px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 14px;
+          font-weight: 500;
+        }
+        .dirty-actions {
+          display: flex;
+          gap: 12px;
+        }
+        .workspace-grid {
+          display: grid;
+          grid-template-columns: 260px 1fr 340px;
+          gap: 24px;
+          align-items: start;
+        }
+        .sidebar-card {
+          background: #ffffff;
+          border: 1px solid #e1e3e5;
+          border-radius: 8px;
+          padding: 12px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .category-item {
+          display: block;
+          width: 100%;
+          text-align: left;
+          background: none;
+          border: none;
+          padding: 10px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          margin-bottom: 4px;
+        }
+        .category-item:hover {
+          background: #f1f2f4;
+        }
+        .category-item.active {
+          background: #e2f1eb;
+          color: #006e52;
+          font-weight: 600;
+        }
+        .category-name {
+          font-size: 14px;
+          display: block;
+        }
+        .category-desc {
+          font-size: 11px;
+          color: #6d7175;
+          display: block;
+          margin-top: 2px;
+        }
+        .form-card {
+          background: #ffffff;
+          border: 1px solid #e1e3e5;
+          border-radius: 8px;
+          padding: 24px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          min-height: 500px;
+        }
+        .form-title {
+          font-size: 18px;
+          font-weight: 700;
+          margin: 0 0 8px 0;
+          color: #1a1a1a;
+        }
+        .form-desc {
+          font-size: 13px;
+          color: #6d7175;
+          margin-bottom: 24px;
+          border-bottom: 1px solid #f1f2f4;
+          padding-bottom: 12px;
+        }
+        .form-group {
+          margin-bottom: 20px;
+        }
+        .form-label {
+          display: block;
+          font-size: 13px;
+          font-weight: 600;
+          color: #2c3e50;
+          margin-bottom: 6px;
+        }
+        .form-input {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          font-size: 13px;
+          background: #ffffff;
+          color: #202223;
+        }
+        .form-input:focus {
+          border-color: #008060;
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.1);
+        }
+        .form-toggle-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #f9fafb;
+          padding: 12px;
+          border-radius: 8px;
+          border: 1px solid #f1f2f4;
+          margin-bottom: 16px;
+        }
+        .toggle-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .toggle-title {
+          font-size: 13px;
+          font-weight: 600;
+        }
+        .toggle-desc {
+          font-size: 11px;
+          color: #6d7175;
+        }
+        .switch-input {
+          position: relative;
+          display: inline-block;
+          width: 40px;
+          height: 20px;
+        }
+        .switch-input input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+        .switch-slider {
+          position: absolute;
+          cursor: pointer;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background-color: #e4e4e7;
+          transition: 0.2s;
+          border-radius: 20px;
+        }
+        .switch-slider:before {
+          position: absolute;
+          content: "";
+          height: 14px;
+          width: 14px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          transition: 0.2s;
+          border-radius: 50%;
+        }
+        .switch-input input:checked + .switch-slider {
+          background-color: #008060;
+        }
+        .switch-input input:checked + .switch-slider:before {
+          transform: translateX(20px);
+        }
+        .grid-color-picker {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+        .color-input-wrapper {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+        .color-well {
+          width: 32px;
+          height: 32px;
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          padding: 0;
+          cursor: pointer;
+          overflow: hidden;
+        }
+        .color-well::-webkit-color-swatch-wrapper {
+          padding: 0;
+        }
+        .color-well::-webkit-color-swatch {
+          border: none;
+        }
+        .layout-box-widget {
+          border: 1px dashed #cccccc;
+          border-radius: 8px;
+          padding: 16px;
+          background: #fcfcfc;
+          text-align: center;
+        }
+        .layout-box-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 8px;
+        }
+        .btn-action-primary {
+          background: #008060;
+          color: #ffffff;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 13px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .btn-action-primary:hover {
+          background: #006e52;
+        }
+        .btn-action-secondary {
+          background: #ffffff;
+          color: #202223;
+          border: 1px solid #babfc3;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 13px;
+          cursor: pointer;
+        }
+        .btn-action-secondary:hover {
+          background: #f6f6f7;
+        }
+        .preview-card {
+          background: #ffffff;
+          border: 1px solid #e1e3e5;
+          border-radius: 12px;
+          padding: 20px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+          position: sticky;
+          top: 20px;
+        }
+        .preview-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+        .preview-title {
+          font-size: 14px;
+          font-weight: 700;
+          color: #6d7175;
+          text-transform: uppercase;
+        }
+        .mock-product-selector {
+          display: flex;
+          background: #f1f2f4;
+          padding: 3px;
+          border-radius: 6px;
+          gap: 4px;
+        }
+        .mock-product-btn {
+          border: none;
+          background: none;
+          font-size: 11px;
+          padding: 4px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: 600;
+        }
+        .mock-product-btn.active {
+          background: #ffffff;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .mock-canvas-container {
+          height: 220px;
+          border-radius: 8px;
+          background-size: contain;
+          background-repeat: no-repeat;
+          background-position: center;
+          background-color: #f7f8f9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+          overflow: hidden;
+          box-shadow: inset 0 0 10px rgba(0,0,0,0.02);
+          margin-bottom: 16px;
+        }
+        .personalized-overlay-text {
+          font-size: 20px;
+          font-weight: bold;
+          text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+          user-select: none;
+          max-width: 150px;
+          word-break: break-all;
+          text-align: center;
+        }
+        .customizer-preview-widget {
+          border-top: 1px solid #ebebeb;
+          padding-top: 16px;
+        }
+        .widget-field-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #2c3e50;
+          margin-bottom: 4px;
+          display: flex;
+          justify-content: space-between;
+        }
+        .customizer-button {
+          width: 100%;
+          padding: 10px;
+          border: none;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 13px;
+          cursor: default;
+          text-align: center;
+          margin-top: 12px;
+        }
+        .widget-swatch-list {
+          display: flex;
+          gap: 6px;
+          margin-top: 6px;
+        }
+        .widget-swatch-circle {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          cursor: pointer;
+          border: 1px solid #d2d5d8;
+        }
+      `}</style>
+
+      {/* Page Header */}
+      <div className="header-bar">
+        <h1 className="header-title">App Personalization Preferences</h1>
+        {!isDirty && (
+          <button className="btn-action-primary" onClick={handleSave} disabled={fetcher.state === "submitting"}>
+            {fetcher.state === "submitting" ? "Saving..." : "Save Preferences"}
+          </button>
+        )}
+      </div>
+
+      {/* Dirty state notification bar */}
+      {isDirty && (
+        <div className="dirty-alert-banner">
+          <span>⚠️ You have unsaved configuration changes in your settings draft!</span>
+          <div className="dirty-actions">
+            <button className="btn-action-secondary" onClick={handleDiscard} disabled={fetcher.state === "submitting"}>
+              Discard Changes
+            </button>
+            <button className="btn-action-primary" onClick={handleSave} disabled={fetcher.state === "submitting"}>
+              {fetcher.state === "submitting" ? "Saving settings..." : "Save Configuration"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Settings Grid */}
+      <div className="workspace-grid">
+        
+        {/* Category Navigation Sidebar */}
+        <div className="sidebar-card">
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              className={`category-item ${activeCategory === cat.id ? "active" : ""}`}
+              onClick={() => setActiveCategory(cat.id)}
+            >
+              <span className="category-name">{cat.name}</span>
+              <span className="category-desc">{cat.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Central Settings Form Panel */}
+        <div className="form-card">
+          {activeCategory === "installation" && (
+            <div>
+              <h2 className="form-title">🔌 Active Integration & Theme Blocks</h2>
+              <p className="form-desc">Verify your Shopify app block injection and theme status.</p>
+              
+              <div className="form-toggle-row">
+                <div className="toggle-info">
+                  <span className="toggle-title">Dawn Theme App Block integration</span>
+                  <span className="toggle-desc">Theme app extensions blocks injected automatically in product layouts.</span>
+                </div>
+                <span style={{ background: "#e2f1eb", color: "#006e52", padding: "4px 8px", borderRadius: "4px", fontSize: "11px", fontWeight: "bold" }}>
+                  ACTIVE
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Selected Live Theme Directory</label>
+                <select className="form-input" style={{ width: "100%" }} defaultValue="dawn">
+                  <option value="dawn">Dawn (Version 15.0.0 - Development Copy)</option>
+                  <option value="spotlight">Spotlight (Version 12.1.0)</option>
+                </select>
+              </div>
+
+              <div style={{ marginTop: "24px", background: "#f9fafb", border: "1px solid #ebebeb", padding: "16px", borderRadius: "8px" }}>
+                <span style={{ fontWeight: 600, display: "block", marginBottom: "8px", fontSize: "13px" }}>Theme Installation Instructions</span>
+                <span style={{ fontSize: "12px", color: "#6d7175", lineHeight: "1.5" }}>
+                  To load the personalization customizer onto your storefront, open the Shopify Theme Customizer, select your Product template, click **"Add block"** in the Product information section, and select **"Zepto Customizer Block"**. Save your changes.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "styling" && (
+            <div>
+              <h2 className="form-title">🎨 Global Branding & Form Styling</h2>
+              <p className="form-desc">Modify accent colors, margins, paddings, and font sizes.</p>
+              
+              <div className="form-group">
+                <span className="form-label">Color Swatches</span>
+                <div className="grid-color-picker">
                   <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Brand Accent Color</label>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} style={{ width: "35px", height: "30px", padding: 0, border: "none", cursor: "pointer", borderRadius: "4px" }} />
-                      <input type="text" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} style={{ width: "100%", padding: "6px", fontSize: "12px", border: "1px solid #babfc3", borderRadius: "4px" }} />
+                    <label className="form-label" style={{ fontSize: "11px" }}>Brand Accent Color</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} />
+                      <input type="text" className="form-input" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} />
                     </div>
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Button Background</label>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input type="color" value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} style={{ width: "35px", height: "30px", padding: 0, border: "none", cursor: "pointer", borderRadius: "4px" }} />
-                      <input type="text" value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} style={{ width: "100%", padding: "6px", fontSize: "12px", border: "1px solid #babfc3", borderRadius: "4px" }} />
+                    <label className="form-label" style={{ fontSize: "11px" }}>Submit Button Background</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} />
+                      <input type="text" className="form-input" value={buttonColor} onChange={(e) => setButtonColor(e.target.value)} />
                     </div>
                   </div>
                   <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Button Text Color</label>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input type="color" value={buttonTextColor} onChange={(e) => setButtonTextColor(e.target.value)} style={{ width: "35px", height: "30px", padding: 0, border: "none", cursor: "pointer", borderRadius: "4px" }} />
-                      <input type="text" value={buttonTextColor} onChange={(e) => setButtonTextColor(e.target.value)} style={{ width: "100%", padding: "6px", fontSize: "12px", border: "1px solid #babfc3", borderRadius: "4px" }} />
+                    <label className="form-label" style={{ fontSize: "11px" }}>Submit Button Text Color</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={buttonTextColor} onChange={(e) => setButtonTextColor(e.target.value)} />
+                      <input type="text" className="form-input" value={buttonTextColor} onChange={(e) => setButtonTextColor(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: "11px" }}>Option Background Fill</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={globalBgColor} onChange={(e) => setGlobalBgColor(e.target.value)} />
+                      <input type="text" className="form-input" value={globalBgColor} onChange={(e) => setGlobalBgColor(e.target.value)} />
                     </div>
                   </div>
                 </div>
-              </s-stack>
-            </s-box>
+              </div>
 
-            {/* Customizer Layout Configs */}
-            <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
-              <s-stack direction="block" gap={"small" as any}>
-                <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>📐 Presentation Layout Mode</span>
-                <s-paragraph>Choose the default layout format where customization fields render on storefront pages.</s-paragraph>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "8px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Storefront Layout Mode</label>
-                    <select
-                      value={layoutMode}
-                      onChange={(e) => setLayoutMode(e.target.value)}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
-                    >
-                      <option value="stacked">Stacked Layout (Inline below price)</option>
-                      <option value="tabs">Dynamic Tabs (Segments options)</option>
-                      <option value="modal">Sleek Overlay Modal (Triggers overlay)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Modal Dimensions</label>
-                    <select
-                      value={popupType}
-                      onChange={(e) => setPopupType(e.target.value)}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
-                    >
-                      <option value="partial">Partial Overlay Drawer (30% Width)</option>
-                      <option value="full">Fullscreen Customizer Canvas (100% overlay)</option>
-                    </select>
-                  </div>
+              <div className="form-toggle-row">
+                <div className="toggle-info">
+                  <span className="toggle-title">Enable Sticky Preview Drawer</span>
+                  <span className="toggle-desc">Float the widget preview at the screen bottom when scrolling past.</span>
                 </div>
+                <label className="switch-input">
+                  <input type="checkbox" checked={stickyPreview} onChange={(e) => setStickyPreview(e.target.checked)} />
+                  <span className="switch-slider"></span>
+                </label>
+              </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", background: "#f9fafb", padding: "10px", borderRadius: "6px" }}>
-                  <input
-                    type="checkbox"
-                    id="show-quantity"
-                    checked={showQuantity}
-                    onChange={(e) => setShowQuantity(e.target.checked)}
-                    style={{ width: "16px", height: "16px", accentColor: "#008060", cursor: "pointer" }}
-                  />
-                  <label htmlFor="show-quantity" style={{ fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
-                    Enable Inline Quantity Input inside Overlay Modal
-                  </label>
+              <div className="form-toggle-row">
+                <div className="toggle-info">
+                  <span className="toggle-title">Activate Zoom on Swatch Hover</span>
+                  <span className="toggle-desc">Slightly zoom color and image swatches on pointer hover actions.</span>
                 </div>
-              </s-stack>
-            </s-box>
+                <label className="switch-input">
+                  <input type="checkbox" checked={zoomHover} onChange={(e) => setZoomHover(e.target.checked)} />
+                  <span className="switch-slider"></span>
+                </label>
+              </div>
 
-            {/* Shopping Cart Actions & Post-Cart Redirection */}
-            <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
-              <s-stack direction="block" gap={"small" as any}>
-                <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>🛒 Add-to-Cart Post Action</span>
-                <s-paragraph>Define what happens when a customer clicks the customizer checkout button.</s-paragraph>
-                
-                <div style={{ marginTop: "8px" }}>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Redirection Rule</label>
-                  <select
-                    value={cartRedirect}
-                    onChange={(e) => setCartRedirect(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
-                  >
-                    <option value="stay">Stay on Product Page (Dynamic loading check)</option>
-                    <option value="cart">Redirect to Cart Page (/cart)</option>
-                    <option value="checkout">Redirect to Shopify Checkout Portal (Instantly)</option>
+              <div className="form-group" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label className="form-label">Input Style Shape</label>
+                  <select className="form-input" value={fieldStyle} onChange={(e) => setFieldStyle(e.target.value)}>
+                    <option value="Normal">Normal Box (Sharp borders)</option>
+                    <option value="Round">Round Box (Circular borders)</option>
+                    <option value="Underline">Minimal Underline</option>
                   </select>
                 </div>
-              </s-stack>
-            </s-box>
-
-            {/* Print quality specs */}
-            <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
-              <s-stack direction="block" gap={"small" as any}>
-                <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>📄 High-Resolution Vector Export Specs</span>
-                <s-paragraph>Control the files compiled during checkout webhook processes.</s-paragraph>
-                
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "8px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Default Export Format</label>
-                    <select
-                      value={exportFormat}
-                      onChange={(e) => setExportFormat(e.target.value)}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
-                    >
-                      <option value="png">Transparent PNG (Raster high density)</option>
-                      <option value="pdf">Vector PDF Layouts (Infinite scale)</option>
-                      <option value="svg">Razor-sharp SVG (Self-contained vectors)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Resolution Density (DPI)</label>
-                    <input
-                      type="number"
-                      min="72"
-                      max="600"
-                      value={dpiResolution}
-                      onChange={(e) => setDpiResolution(parseInt(e.target.value) || 300)}
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
-                    />
-                  </div>
+                <div>
+                  <label className="form-label">Instruction Help Style</label>
+                  <select className="form-input" value={instructionDisplayType} onChange={(e) => setInstructionDisplayType(e.target.value)}>
+                    <option value="question">Question Mark Link</option>
+                    <option value="tooltip">Sleek Info Tooltip</option>
+                  </select>
                 </div>
-              </s-stack>
-            </s-box>
+              </div>
 
-            {/* Custom developer CSS/JS console overrides */}
-            <s-box padding="base" borderRadius="base" borderWidth="base" background={"surface" as any}>
-              <s-stack direction="block" gap={"small" as any}>
-                <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a" }}>💻 Custom CSS / JS Overrides Console</span>
-                <s-paragraph>Inject raw stylesheets or JavaScript tracking hooks directly into storefront pages.</s-paragraph>
-                
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginTop: "8px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Custom CSS Overrides</label>
-                    <textarea
-                      rows={4}
-                      value={customCss}
-                      onChange={(e) => setCustomCss(e.target.value)}
-                      placeholder=".zepto-customizer-option { border-radius: 12px; }"
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", fontFamily: "monospace", fontSize: "12px", background: "#fff" }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, marginBottom: "4px" }}>Custom JavaScript Triggers (Analytics / Pixel Fires)</label>
-                    <textarea
-                      rows={4}
-                      value={customJs}
-                      onChange={(e) => setCustomJs(e.target.value)}
-                      placeholder="window.addEventListener('customizer:open', () => { console.log('Customizer Opened'); });"
-                      style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", fontFamily: "monospace", fontSize: "12px", background: "#fff" }}
-                    />
-                  </div>
+              <div className="form-group">
+                <label className="form-label">Global Paddings (Top / Right / Bottom / Left in px)</label>
+                <div className="layout-box-grid">
+                  <input type="number" className="form-input" value={globalPaddingTop} onChange={(e) => setGlobalPaddingTop(parseInt(e.target.value) || 0)} placeholder="Top" />
+                  <input type="number" className="form-input" value={globalPaddingRight} onChange={(e) => setGlobalPaddingRight(parseInt(e.target.value) || 0)} placeholder="Right" />
+                  <input type="number" className="form-input" value={globalPaddingBottom} onChange={(e) => setGlobalPaddingBottom(parseInt(e.target.value) || 0)} placeholder="Bottom" />
+                  <input type="number" className="form-input" value={globalPaddingLeft} onChange={(e) => setGlobalPaddingLeft(parseInt(e.target.value) || 0)} placeholder="Left" />
                 </div>
-              </s-stack>
-            </s-box>
+              </div>
 
-            <div style={{ marginTop: "12px" }}>
-              <s-button onClick={handleSave} variant="primary" {...(fetcher.state === "submitting" ? { loading: true } : {})}>
-                Save Global Preferences
-              </s-button>
-            </div>
-
-          </div>
-
-          {/* RIGHT SIDE: Live Mockup preview widget */}
-          <div>
-            <div style={{ position: "sticky", top: "20px" }}>
-              <span style={{ fontSize: "16px", fontWeight: 700, display: "block", color: "#1a1a1a", marginBottom: "8px" }}>👀 Widget Mockup Preview</span>
-              <div style={{
-                background: "#ffffff",
-                border: "1px solid #e1e3e5",
-                borderRadius: "12px",
-                padding: "20px",
-                boxShadow: "0 4px 12px rgba(0,0,0,0.05)"
-              }}>
-                {/* Form header */}
-                <h4 style={{ fontSize: "16px", fontWeight: 700, borderBottom: `2px solid ${brandColor}`, paddingBottom: "8px", color: brandColor, margin: "0 0 16px 0" }}>
-                  Personalize Your Item
-                </h4>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  
-                  {/* Field Option mock */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#2c3e50", marginBottom: "4px" }}>
-                      Engraving Initials <span style={{ color: "#d93838" }}>*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={previewText}
-                      onChange={(e) => setPreviewText(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "8px",
-                        borderRadius: "6px",
-                        border: "1px solid #babfc3"
-                      }}
-                    />
-                  </div>
-
-                  {/* Swatch options mock */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#2c3e50", marginBottom: "6px" }}>
-                      Text Coloring Style
-                    </label>
-                    <div style={{ display: "flex", gap: "10px" }}>
-                      {["#000000", brandColor, "#457B9D"].map((c, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setPreviewColor(c)}
-                          style={{
-                            width: "28px",
-                            height: "28px",
-                            borderRadius: "50%",
-                            border: previewColor === c ? `3px solid ${brandColor}` : "1px solid #d2d5d8",
-                            background: c,
-                            cursor: "pointer",
-                            padding: 0
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Mock live mockup render canvas preview */}
-                  <div style={{
-                    height: "150px",
-                    border: "1px dashed #e1e3e5",
-                    borderRadius: "8px",
-                    background: "#fdfdfd",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    position: "relative"
-                  }}>
-                    <span style={{
-                      fontSize: "24px",
-                      fontWeight: "bold",
-                      color: previewColor,
-                      fontFamily: "Arial, sans-serif"
-                    }}>
-                      {previewText || "Preview"}
-                    </span>
-                    <small style={{ position: "absolute", bottom: "6px", right: "6px", color: "#6d7175", fontSize: "9px" }}>
-                      100x150 mockup preview
-                    </small>
-                  </div>
-
-                  {/* Submit Button mock */}
-                  <button
-                    disabled
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      background: buttonColor,
-                      color: buttonTextColor,
-                      border: "none",
-                      borderRadius: "6px",
-                      fontWeight: 600,
-                      cursor: "default"
-                    }}
-                  >
-                    Confirm Design & Add to Cart
-                  </button>
-
-                  <div style={{ fontSize: "11px", color: "#6d7175", textAlign: "center", fontStyle: "italic" }}>
-                    Mockup renders according to your customization settings layout rules.
-                  </div>
-
+              <div className="form-group">
+                <label className="form-label">Global Margins (Top / Right / Bottom / Left in px)</label>
+                <div className="layout-box-grid">
+                  <input type="number" className="form-input" value={globalMarginTop} onChange={(e) => setGlobalMarginTop(parseInt(e.target.value) || 0)} placeholder="Top" />
+                  <input type="number" className="form-input" value={globalMarginRight} onChange={(e) => setGlobalMarginRight(parseInt(e.target.value) || 0)} placeholder="Right" />
+                  <input type="number" className="form-input" value={globalMarginBottom} onChange={(e) => setGlobalMarginBottom(parseInt(e.target.value) || 0)} placeholder="Bottom" />
+                  <input type="number" className="form-input" value={globalMarginLeft} onChange={(e) => setGlobalMarginLeft(parseInt(e.target.value) || 0)} placeholder="Left" />
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
+          {activeCategory === "popup" && (
+            <div>
+              <h2 className="form-title">📐 Storefront Presentation layout mode</h2>
+              <p className="form-desc">Choose the default layout format where customization fields render.</p>
+              
+              <div className="form-group">
+                <label className="form-label">Presenter Layout Mode</label>
+                <select className="form-input" value={layoutMode} onChange={(e) => setLayoutMode(e.target.value)}>
+                  <option value="stacked">Stacked Layout (Inline below price)</option>
+                  <option value="tabs">Dynamic Tabs (Segmented layout)</option>
+                  <option value="modal">Sleek Overlay Modal (Triggers screen overlay)</option>
+                </select>
+              </div>
+
+              {layoutMode === "modal" && (
+                <div className="form-group">
+                  <label className="form-label">Modal Drawer Dimensions</label>
+                  <select className="form-input" value={popupType} onChange={(e) => setPopupType(e.target.value)}>
+                    <option value="partial">Partial Overlay Drawer (30% Screen Width)</option>
+                    <option value="full">Fullscreen Customizer Canvas (100% overlay)</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="form-toggle-row">
+                <div className="toggle-info">
+                  <span className="toggle-title">Enable Inline Quantity Selector</span>
+                  <span className="toggle-desc">Show product quantity box directly inside customizer modal controls.</span>
+                </div>
+                <label className="switch-input">
+                  <input type="checkbox" checked={showQuantity} onChange={(e) => setShowQuantity(e.target.checked)} />
+                  <span className="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "text" && (
+            <div>
+              <h2 className="form-title">✍️ Text Validation & Translators</h2>
+              <p className="form-desc">Configure character limits, placeholder rules, and translation text.</p>
+              
+              <div className="form-group">
+                <label className="form-label">Personalize Button Action wording</label>
+                <input type="text" className="form-input" value={personalizeBtnText} onChange={(e) => setPersonalizeBtnText(e.target.value)} />
+              </div>
+
+              <div className="form-group" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label className="form-label">Textarea Label</label>
+                  <input type="text" className="form-input" value={engraveTextLabel} onChange={(e) => setEngraveTextLabel(e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Instruction Wording</label>
+                  <input type="text" className="form-input" value={instructionsText} onChange={(e) => setInstructionsText(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "16px" }}>
+                <div>
+                  <label className="form-label">Default Size option text</label>
+                  <input type="text" className="form-input" value={selectSizeText} onChange={(e) => setSelectSizeText(e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Character Limit</label>
+                  <input type="number" className="form-input" value={charLimit} onChange={(e) => setCharLimit(parseInt(e.target.value) || 0)} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "image" && (
+            <div>
+              <h2 className="form-title">🖼️ Custom Image Upload Restrictions</h2>
+              <p className="form-desc">Define allowed file size, dimensions, and image extensions.</p>
+
+              <div className="form-group">
+                <label className="form-label">Maximum Allowed File Size</label>
+                <select className="form-input" value={maxImageSize} onChange={(e) => setMaxImageSize(e.target.value)}>
+                  <option value="5MB">5 MB (Standard web quality)</option>
+                  <option value="10MB">10 MB (High density prints)</option>
+                  <option value="20MB">20 MB (Raw vectors)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Allowed Extensions</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", background: "#f9fafb", padding: "12px", borderRadius: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input type="checkbox" checked={allowedJpg} id="jpg-check" onChange={(e) => setAllowedJpg(e.target.checked)} />
+                    <label htmlFor="jpg-check" style={{ fontSize: "13px" }}>JPEG (.jpg, .jpeg)</label>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input type="checkbox" checked={allowedPng} id="png-check" onChange={(e) => setAllowedPng(e.target.checked)} />
+                    <label htmlFor="png-check" style={{ fontSize: "13px" }}>PNG (.png - supports transparent backgrounds)</label>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <input type="checkbox" checked={allowedSvg} id="svg-check" onChange={(e) => setAllowedSvg(e.target.checked)} />
+                    <label htmlFor="svg-check" style={{ fontSize: "13px" }}>SVG (.svg - vector graphic inputs)</label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Minimum Dimension Check</label>
+                <select className="form-input" defaultValue="500">
+                  <option value="300">300 x 300 pixels</option>
+                  <option value="500">500 x 500 pixels (Recommended)</option>
+                  <option value="1000">1000 x 1000 pixels (High Definition)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "swatches" && (
+            <div>
+              <h2 className="form-title">🔴 Swatch border & hover properties</h2>
+              <p className="form-desc">Style storefront choices, color border wells, and select effects.</p>
+
+              <div className="form-group">
+                <span className="form-label">Swatch Borders</span>
+                <div className="grid-color-picker">
+                  <div>
+                    <label className="form-label" style={{ fontSize: "11px" }}>Swatch Border Color</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={swatchBorderColor} onChange={(e) => setSwatchBorderColor(e.target.value)} />
+                      <input type="text" className="form-input" value={swatchBorderColor} onChange={(e) => setSwatchBorderColor(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: "11px" }}>Active Swatch Border Color</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={activeSwatchBorderColor} onChange={(e) => setActiveSwatchBorderColor(e.target.value)} />
+                      <input type="text" className="form-input" value={activeSwatchBorderColor} onChange={(e) => setActiveSwatchBorderColor(e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label" style={{ fontSize: "11px" }}>Active Swatch Background</label>
+                    <div className="color-input-wrapper">
+                      <input type="color" className="color-well" value={activeSwatchBgColor} onChange={(e) => setActiveSwatchBgColor(e.target.value)} />
+                      <input type="text" className="form-input" value={activeSwatchBgColor} onChange={(e) => setActiveSwatchBgColor(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Active Choice Hover Interaction</label>
+                <select className="form-input" defaultValue="zoom">
+                  <option value="zoom">Magnify choice circular borders (Zoom)</option>
+                  <option value="popover">Show popover details label on hover</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "dropdown" && (
+            <div>
+              <h2 className="form-title">🔘 Dropdown & Checkbox layouts</h2>
+              <p className="form-desc">Adjust the alignments and list spacings for selection rows.</p>
+
+              <div className="form-group">
+                <label className="form-label">Dropdown Spacing Scale</label>
+                <select className="form-input" value={dropdownSpacing} onChange={(e) => setDropdownSpacing(e.target.value)}>
+                  <option value="compact">Compact (Tight grid rows)</option>
+                  <option value="normal">Normal (Generous grid spaces)</option>
+                  <option value="relaxed">Relaxed (Wide padding rows)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Options Grid Column Count</label>
+                <select className="form-input" value={optionsColumns} onChange={(e) => setOptionsColumns(e.target.value)}>
+                  <option value="1">1 Column (Vertical list stack)</option>
+                  <option value="2">2 Columns (Side-by-side grid split)</option>
+                  <option value="3">3 Columns (Multi-option dense row)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "cart" && (
+            <div>
+              <h2 className="form-title">🛒 Add to Cart checkout behaviors</h2>
+              <p className="form-desc">Define checkout redirection routing once options are submitted.</p>
+
+              <div className="form-group">
+                <label className="form-label">Redirection Rule</label>
+                <select className="form-input" value={cartRedirect} onChange={(e) => setCartRedirect(e.target.value)}>
+                  <option value="stay">Stay on Product Page (Dynamic loading check)</option>
+                  <option value="cart">Redirect to Cart Page (/cart)</option>
+                  <option value="checkout">Redirect to Shopify Checkout Portal (Instantly)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Spinner loader indicator wording</label>
+                <input type="text" className="form-input" defaultValue="Adding to cart..." />
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "export" && (
+            <div>
+              <h2 className="form-title">📄 High-Resolution Print Export layouts</h2>
+              <p className="form-desc">Specify format output vectors compiled on checkout backend webhooks.</p>
+
+              <div className="form-group" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label className="form-label">Default Export format</label>
+                  <select className="form-input" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
+                    <option value="png">Transparent PNG (Raster high density)</option>
+                    <option value="pdf">Vector PDF Layouts (Infinite scale)</option>
+                    <option value="svg">Razor-sharp SVG (Self-contained vectors)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">Resolution Density (DPI)</label>
+                  <input
+                    type="number"
+                    min="72"
+                    max="600"
+                    className="form-input"
+                    value={dpiResolution}
+                    onChange={(e) => setDpiResolution(parseInt(e.target.value) || 300)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "pricing" && (
+            <div>
+              <h2 className="form-title">💰 Price adjustments formatting</h2>
+              <p className="form-desc">Custom price formatting and template labels for upcharges.</p>
+
+              <div className="form-group" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <div>
+                  <label className="form-label">Currency Wording symbol</label>
+                  <input type="text" className="form-input" value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} />
+                </div>
+                <div>
+                  <label className="form-label">Upcharge Layout badge</label>
+                  <select className="form-input" defaultValue="prefix">
+                    <option value="prefix">Show upcharge inside choice tags (e.g. +$5.00)</option>
+                    <option value="badge">Show upcharge in dedicated visual pill badge</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-toggle-row">
+                <div className="toggle-info">
+                  <span className="toggle-title">Show Upcharges in Cart Line Items</span>
+                  <span className="toggle-desc">List price changes explicitly as separate metadata fields in checkout.</span>
+                </div>
+                <label className="switch-input">
+                  <input type="checkbox" checked={showUpchargeDetails} onChange={(e) => setShowUpchargeDetails(e.target.checked)} />
+                  <span className="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "css" && (
+            <div>
+              <h2 className="form-title">💻 Custom CSS stylesheet injection</h2>
+              <p className="form-desc">Inject style rule overrides directly to storefront customization templates.</p>
+              
+              <div className="form-group">
+                <label className="form-label" style={{ marginBottom: "12px" }}>Custom CSS Editor (Monaco Editor)</label>
+                {mounted ? (
+                  <div style={{ border: "1px solid #babfc3", borderRadius: "8px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <Editor
+                      height="300px"
+                      language="css"
+                      theme="vs-light"
+                      value={customCss}
+                      onChange={(val) => setCustomCss(val || "")}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 12,
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <textarea
+                    rows={8}
+                    className="form-input"
+                    style={{ fontFamily: "monospace" }}
+                    value={customCss}
+                    onChange={(e) => setCustomCss(e.target.value)}
+                    placeholder=".zepto-customizer-btn { border-radius: 12px; }"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeCategory === "js" && (
+            <div>
+              <h2 className="form-title">⚙️ Custom JavaScript callback triggers</h2>
+              <p className="form-desc">Inject custom pixel analytics hooks or dynamic events scripts.</p>
+              
+              <div className="form-group">
+                <label className="form-label" style={{ marginBottom: "12px" }}>Custom JS Editor (Monaco Editor)</label>
+                {mounted ? (
+                  <div style={{ border: "1px solid #babfc3", borderRadius: "8px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+                    <Editor
+                      height="300px"
+                      language="javascript"
+                      theme="vs-light"
+                      value={customJs}
+                      onChange={(val) => setCustomJs(val || "")}
+                      options={{
+                        minimap: { enabled: false },
+                        fontSize: 12,
+                        lineNumbers: "on",
+                        scrollBeyondLastLine: false,
+                        automaticLayout: true,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <textarea
+                    rows={8}
+                    className="form-input"
+                    style={{ fontFamily: "monospace" }}
+                    value={customJs}
+                    onChange={(e) => setCustomJs(e.target.value)}
+                    placeholder="window.addEventListener('customizer:save', (e) => { console.log(e.detail); });"
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
-      </s-section>
-    </s-page>
+        {/* Right Side Storefront Customizer Live Preview Block */}
+        <div className="preview-card">
+          <div className="preview-header">
+            <span className="preview-title">Live Storefront Preview</span>
+            <div className="mock-product-selector">
+              <button
+                className={`mock-product-btn ${mockProductType === "backpack" ? "active" : ""}`}
+                onClick={() => setMockProductType("backpack")}
+              >
+                🎒 Backpack
+              </button>
+              <button
+                className={`mock-product-btn ${mockProductType === "mug" ? "active" : ""}`}
+                onClick={() => setMockProductType("mug")}
+              >
+                ☕ Mug
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Rendering Canvas Mockup */}
+          <div
+            className="mock-canvas-container"
+            style={{
+              backgroundImage: mockProductType === "backpack" ? "url(/backpack_mockup.png)" : "url(/mug_mockup.png)"
+            }}
+          >
+            {/* Position personalization text according to selected product type */}
+            <div
+              className="personalized-overlay-text"
+              style={{
+                color: previewColor,
+                fontFamily: previewFont === "Alexbrush" ? "'Alex Brush', cursive" : previewFont === "Playfair" ? "'Playfair Display', serif" : previewFont === "Mono" ? "'Roboto Mono', monospace" : "Arial, sans-serif",
+                transform: mockProductType === "backpack" 
+                  ? "translateY(55px) translateX(2px) scale(0.85)" 
+                  : "translateY(10px) translateX(-25px) scale(0.9)",
+                opacity: previewText ? 1 : 0.4
+              }}
+            >
+              {previewText || "Personalized Text"}
+            </div>
+          </div>
+
+          {/* Customizer form inputs mockup widget */}
+          <div className="customizer-preview-widget">
+            <h4 style={{ fontSize: "14px", fontWeight: 700, borderBottom: `2px solid ${brandColor}`, paddingBottom: "6px", color: brandColor, margin: "0 0 12px 0" }}>
+              Personalize Your Item
+            </h4>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              {/* Size Select Mock */}
+              <div>
+                <label className="widget-field-label">{selectSizeText}</label>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  {["Small", "Medium", "Large"].map((size) => (
+                    <button
+                      key={size}
+                      className="btn-action-secondary"
+                      style={{
+                        flex: 1,
+                        padding: "6px 0",
+                        fontSize: "11px",
+                        background: previewSize === size ? brandColor : "#ffffff",
+                        color: previewSize === size ? "#ffffff" : "#202223",
+                        borderColor: previewSize === size ? brandColor : "#babfc3"
+                      }}
+                      onClick={() => setPreviewSize(size)}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Text Area Customizer Option Mock */}
+              <div>
+                <label className="widget-field-label">
+                  <span>{engraveTextLabel} <span style={{ color: "#d93838" }}>*</span></span>
+                  <span style={{ fontSize: "10px", color: "#6d7175" }}>
+                    {charLimit - previewText.length} characters left
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{
+                    borderRadius: fieldStyle === "Round" ? "20px" : "6px",
+                    borderBottomWidth: fieldStyle === "Underline" ? "2px" : "1px",
+                    borderLeft: fieldStyle === "Underline" ? "none" : "1px solid #babfc3",
+                    borderRight: fieldStyle === "Underline" ? "none" : "1px solid #babfc3",
+                    borderTop: fieldStyle === "Underline" ? "none" : "1px solid #babfc3",
+                  }}
+                  value={previewText}
+                  maxLength={charLimit}
+                  onChange={(e) => setPreviewText(e.target.value)}
+                  placeholder={instructionsText}
+                />
+              </div>
+
+              {/* Font Selector Customizer Option Mock */}
+              <div>
+                <label className="widget-field-label">Select a Font</label>
+                <select className="form-input" value={previewFont} onChange={(e) => setPreviewFont(e.target.value)}>
+                  <option value="Arial">Sans-serif (Modern)</option>
+                  <option value="Playfair">Playfair Serif (Classic)</option>
+                  <option value="Alexbrush">Alex Brush Script (Cursive)</option>
+                  <option value="Mono">Roboto Mono (Engraved style)</option>
+                </select>
+              </div>
+
+              {/* Text Color Choices Customizer Swatches Mock */}
+              <div>
+                <label className="widget-field-label">Text Ink Color</label>
+                <div className="widget-swatch-list">
+                  {["#000000", brandColor, "#4A90E2", "#E25A9E"].map((color) => (
+                    <button
+                      key={color}
+                      className="widget-swatch-circle"
+                      onClick={() => setPreviewColor(color)}
+                      style={{
+                        backgroundColor: color,
+                        border: previewColor === color ? `3px solid ${activeSwatchBorderColor}` : `1px solid ${swatchBorderColor}`,
+                        boxShadow: previewColor === color ? `0 0 0 1px ${activeSwatchBgColor}` : "none",
+                        transform: zoomHover && previewColor !== color ? "scale(0.95)" : "scale(1)"
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Material Dropdown Mock */}
+              <div>
+                <label className="widget-field-label">Hardware Material</label>
+                <select className="form-input" value={previewMaterial} onChange={(e) => setPreviewMaterial(e.target.value)}>
+                  <option value="Wood">Eco Wood</option>
+                  <option value="Brass">Polished Brass</option>
+                  <option value="Silver">Sterling Silver</option>
+                </select>
+              </div>
+
+              {/* Submit Widget Button Mock */}
+              <button
+                className="customizer-button"
+                disabled
+                style={{
+                  background: buttonColor,
+                  color: buttonTextColor
+                }}
+              >
+                {personalizeBtnText}
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
   );
 }
