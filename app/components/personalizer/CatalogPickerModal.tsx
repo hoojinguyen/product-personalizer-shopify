@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { SearchIcon, ImageIcon, CloseIcon } from "./Icons";
 
 interface CatalogPickerModalProps {
   isOpen: boolean;
   products: any[];
   onClose: () => void;
-  onAdd: (productId: string) => void;
+  onAdd: (selectedIds: string[]) => void;
 }
 
 export function CatalogPickerModal({
@@ -15,7 +16,7 @@ export function CatalogPickerModal({
 }: CatalogPickerModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchBy, setSearchBy] = useState("all");
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
 
   if (!isOpen) return null;
 
@@ -42,10 +43,18 @@ export function CatalogPickerModal({
     return true;
   });
 
+  const handleToggleProduct = (productId: string) => {
+    if (selectedProductIds.includes(productId)) {
+      setSelectedProductIds(selectedProductIds.filter(id => id !== productId));
+    } else {
+      setSelectedProductIds([...selectedProductIds, productId]);
+    }
+  };
+
   const handleAdd = () => {
-    if (selectedProductId) {
-      onAdd(selectedProductId);
-      setSelectedProductId(null);
+    if (selectedProductIds.length > 0) {
+      onAdd(selectedProductIds);
+      setSelectedProductIds([]);
     }
   };
 
@@ -54,19 +63,21 @@ export function CatalogPickerModal({
       <div className="modal-card">
         
         <div className="modal-header">
-          <h3>Add Product Customizer</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h3>Select Products to Configure</h3>
+          <button className="modal-close" onClick={onClose} aria-label="Close modal" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <CloseIcon />
+          </button>
         </div>
 
         <div className="modal-body">
           <p style={{ fontSize: "13px", color: "#6d7175", margin: "0 0 16px 0" }}>
-            Select an unconfigured product from your store catalog to apply personalization config.
+            Select one or more unconfigured products from your store catalog to apply personalization config.
           </p>
 
           {/* Search controls inside modal */}
           <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
             <div className="search-wrapper" style={{ flex: 2 }}>
-              <span className="search-icon">🔍</span>
+              <SearchIcon className="search-icon" />
               <input
                 type="text"
                 placeholder="Search store catalog..."
@@ -99,11 +110,11 @@ export function CatalogPickerModal({
               </div>
             ) : (
               pickerProducts.map((p: any) => {
-                const isSelected = selectedProductId === p.id;
+                const isSelected = selectedProductIds.includes(p.id);
                 return (
                   <div
                     key={p.id}
-                    onClick={() => setSelectedProductId(p.id)}
+                    onClick={() => handleToggleProduct(p.id)}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -125,7 +136,9 @@ export function CatalogPickerModal({
                     {p.featuredImage?.url ? (
                       <img src={p.featuredImage.url} alt="" style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "4px" }} />
                     ) : (
-                      <div style={{ width: "40px", height: "40px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
+                      <div style={{ width: "40px", height: "40px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", color: "#8c9196" }}>
+                        <ImageIcon />
+                      </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -144,29 +157,19 @@ export function CatalogPickerModal({
 
         <div className="modal-footer">
           <span style={{ fontSize: "13px", fontWeight: 600 }}>
-            {selectedProductId ? "1 product selected" : "0 products selected"}
+            {selectedProductIds.length === 1 ? "1 product selected" : `${selectedProductIds.length} products selected`}
           </span>
           <div style={{ display: "flex", gap: "8px" }}>
             <button
               className="btn-secondary"
               onClick={onClose}
-              style={{ border: "1px solid #babfc3", color: "#6d7175", background: "#ffffff" }}
             >
               Cancel
             </button>
             <button
               className="btn-primary"
-              disabled={!selectedProductId}
+              disabled={selectedProductIds.length === 0}
               onClick={handleAdd}
-              style={{
-                backgroundColor: selectedProductId ? "#008060" : "#ebebeb",
-                color: selectedProductId ? "#ffffff" : "#8c9196",
-                cursor: selectedProductId ? "pointer" : "not-allowed",
-                border: "none",
-                padding: "8px 16px",
-                fontWeight: 600,
-                borderRadius: "6px"
-              }}
             >
               Add
             </button>

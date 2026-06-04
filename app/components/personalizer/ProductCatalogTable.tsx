@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { SearchIcon, PlusIcon, ImageIcon, DuplicateIcon, ExportIcon, TrashIcon, EditIcon } from "./Icons";
 
 interface ProductCatalogTableProps {
   products: any[];
@@ -10,6 +11,8 @@ interface ProductCatalogTableProps {
   savingStatusToggleId: string | null;
   onOpenAddModal: () => void;
   onBulkDelete: (ids: string[]) => void;
+  onBulkActivate: (ids: string[]) => void;
+  onBulkDeactivate: (ids: string[]) => void;
 }
 
 export function ProductCatalogTable({
@@ -21,7 +24,9 @@ export function ProductCatalogTable({
   onToggleStatus,
   savingStatusToggleId,
   onOpenAddModal,
-  onBulkDelete
+  onBulkDelete,
+  onBulkActivate,
+  onBulkDeactivate
 }: ProductCatalogTableProps) {
   // Local list sorting & search states
   const [searchQuery, setSearchQuery] = useState("");
@@ -32,6 +37,21 @@ export function ProductCatalogTable({
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([]);
   const [activeActionsDropdownId, setActiveActionsDropdownId] = useState<string | null>(null);
+
+  // Close active dropdown menu when clicking outside of it
+  useEffect(() => {
+    if (activeActionsDropdownId === null) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".row-actions-wrapper")) {
+        setActiveActionsDropdownId(null);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => {
+      document.removeEventListener("click", handleOutsideClick);
+    };
+  }, [activeActionsDropdownId]);
 
   // Extract unique filters from product list
   const vendors = Array.from(new Set(products.map((p: any) => p.vendor).filter(Boolean))) as string[];
@@ -86,36 +106,67 @@ export function ProductCatalogTable({
     }
   };
 
+  const executeBulkActivate = () => {
+    if (bulkSelectedIds.length > 0) {
+      onBulkActivate(bulkSelectedIds);
+      setBulkSelectedIds([]);
+    }
+  };
+
+  const executeBulkDeactivate = () => {
+    if (bulkSelectedIds.length > 0) {
+      onBulkDeactivate(bulkSelectedIds);
+      setBulkSelectedIds([]);
+    }
+  };
+
   return (
     <div>
-      <div className="page-header">
+      <div className="page-header" style={{ marginBottom: "16px", marginTop: "8px" }}>
         <div>
-          <h1 className="page-title">Personalizable Products</h1>
-          <p style={{ fontSize: "13px", color: "#6d7175", margin: "4px 0 0 0" }}>
+          <p style={{ fontSize: "13px", color: "#6d7175", margin: 0 }}>
             Configure fields, upcharges, and coordinate layouts for your customizable store products.
           </p>
         </div>
         <button className="btn-primary" onClick={onOpenAddModal}>
-          ➕ Set Customizer config
+          <PlusIcon style={{ strokeWidth: "3px", marginRight: "4px" }} /> Add Customizable Product
         </button>
       </div>
 
       {/* Bulk Operations Bar */}
       {bulkSelectedIds.length > 0 && (
-        <div className="bulk-actions-bar">
+        <div className="bulk-actions-bar" style={{
+          background: "#f0fbf7",
+          border: "1.5px solid #008060",
+          borderRadius: "8px",
+          padding: "12px 18px",
+          marginBottom: "16px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          boxShadow: "0 2px 8px rgba(0, 128, 96, 0.08)"
+        }}>
           <span style={{ fontSize: "13px", fontWeight: 600, color: "#006e52" }}>
-            {bulkSelectedIds.length} products selected for action
+            Selected <strong>{bulkSelectedIds.length}</strong> {bulkSelectedIds.length === 1 ? "product" : "products"}
           </span>
-          <button className="btn-danger" onClick={executeBulkDelete}>
-            🗑️ Delete Customizer for selected
-          </button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button className="btn-secondary" style={{ color: "#008060", border: "1px solid #008060", background: "#ffffff", display: "inline-flex", alignItems: "center" }} onClick={executeBulkActivate}>
+              <span className="polaris-status-dot polaris-status-dot-active" style={{ marginRight: "6px" }} /> Activate Options
+            </button>
+            <button className="btn-secondary" style={{ color: "#6d7175", border: "1px solid #babfc3", background: "#ffffff", display: "inline-flex", alignItems: "center" }} onClick={executeBulkDeactivate}>
+              <span className="polaris-status-dot polaris-status-dot-inactive" style={{ marginRight: "6px" }} /> Inactivate Options
+            </button>
+            <button className="btn-danger" style={{ background: "#d82c0d", color: "#ffffff", border: "none", display: "inline-flex", alignItems: "center" }} onClick={executeBulkDelete}>
+              <TrashIcon style={{ width: "13px", height: "13px", strokeWidth: "2.5px", marginRight: "6px" }} /> Remove Configurations
+            </button>
+          </div>
         </div>
       )}
 
       {/* Filter Toolbar row */}
       <div className="search-filters-row">
         <div className="search-wrapper">
-          <span className="search-icon">🔍</span>
+          <SearchIcon className="search-icon" />
           <input
             type="text"
             placeholder="Search customizer catalog..."
@@ -193,8 +244,59 @@ export function ProductCatalogTable({
           <tbody>
             {paginatedProducts.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: "center", padding: "40px", color: "#8c9196" }}>
-                  No configured products found matching the criteria. Click "Set Customizer config" to add one.
+                <td colSpan={6} style={{ padding: "48px 24px", textAlign: "center" }}>
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "16px",
+                    maxWidth: "400px",
+                    margin: "0 auto"
+                  }}>
+                    <div style={{
+                      width: "60px",
+                      height: "60px",
+                      background: "#f1f2f4",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "24px",
+                      color: "#6d7175"
+                    }}>
+                      🔍
+                    </div>
+                    <div style={{
+                      fontSize: "16px",
+                      fontWeight: 600,
+                      color: "#202223"
+                    }}>
+                      No products found
+                    </div>
+                    <p style={{
+                      fontSize: "13px",
+                      color: "#6d7175",
+                      margin: 0,
+                      lineHeight: "1.5"
+                    }}>
+                      Try changing the search query, clearing filters, or adding a new customizable product.
+                    </p>
+                    {(searchQuery || vendorFilter || tagFilter) && (
+                      <button
+                        className="btn-secondary"
+                        style={{ marginTop: "8px" }}
+                        onClick={() => {
+                          setSearchQuery("");
+                          setVendorFilter("");
+                          setTagFilter("");
+                          setCurrentPage(1);
+                        }}
+                      >
+                        Clear all filters
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -224,7 +326,9 @@ export function ProductCatalogTable({
                       {p.featuredImage?.url ? (
                         <img src={p.featuredImage.url} alt="" style={{ width: "40px", height: "40px", objectFit: "cover", borderRadius: "4px" }} />
                       ) : (
-                        <div style={{ width: "40px", height: "40px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
+                        <div style={{ width: "40px", height: "40px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center", color: "#8c9196" }}>
+                          <ImageIcon />
+                        </div>
                       )}
                     </td>
                     <td>
@@ -243,82 +347,125 @@ export function ProductCatalogTable({
                     </td>
                     <td>
                       <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                        <label className="status-toggle">
+                        <label className="polaris-switch">
                           <input
                             type="checkbox"
                             checked={isEnabled}
                             disabled={savingStatusToggleId === p.id}
                             onChange={() => onToggleStatus(p, isEnabled)}
                           />
-                          <span className="status-slider" />
+                          <span className="polaris-switch-track">
+                            <span className="polaris-switch-thumb">
+                              {savingStatusToggleId === p.id && <span className="polaris-switch-spinner" />}
+                            </span>
+                          </span>
                         </label>
-                        {savingStatusToggleId === p.id && <div className="spinner-overlay" />}
                       </div>
                     </td>
-                    <td style={{ textAlign: "right", position: "relative" }}>
-                      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-                        <button className="btn-secondary" style={{ padding: "6px 12px", fontSize: "12px" }} onClick={() => onConfigureProduct(p)}>
-                          🔧 Edit Layout
+                    <td style={{ textAlign: "right" }}>
+                      <div className="row-actions-wrapper" style={{ display: "flex", gap: "4px", justifyContent: "flex-end", alignItems: "center", position: "relative" }}>
+                        <button className="btn-tertiary" style={{ padding: "6px 10px", fontSize: "13px", whiteSpace: "nowrap" }} onClick={() => onConfigureProduct(p)}>
+                          <EditIcon style={{ marginRight: "4px" }} /> Edit
                         </button>
                         
                         <button
-                          className="btn-secondary"
-                          style={{ padding: "6px 8px", fontSize: "12px" }}
-                          onClick={() => setActiveActionsDropdownId(activeActionsDropdownId === p.id ? null : p.id)}
+                          className="btn-tertiary"
+                          style={{ padding: "6px 8px", fontSize: "13px" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveActionsDropdownId(activeActionsDropdownId === p.id ? null : p.id);
+                          }}
                         >
                           ⋮
                         </button>
 
                         {activeActionsDropdownId === p.id && (
-                          <>
-                            <div
-                              style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 100 }}
-                              onClick={() => setActiveActionsDropdownId(null)}
-                            />
-                            <div style={{
-                              position: "absolute",
-                              right: "12px",
-                              top: "36px",
-                              background: "#ffffff",
-                              border: "1px solid #babfc3",
-                              borderRadius: "6px",
-                              boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                              zIndex: 101,
-                              display: "flex",
-                              flexDirection: "column",
-                              minWidth: "160px",
-                              textAlign: "left"
-                            }}>
-                              <button
-                                style={{ padding: "8px 12px", border: "none", background: "none", fontSize: "13px", cursor: "pointer", width: "100%", textAlign: "left" }}
-                                onClick={() => {
-                                  onDuplicateOptions(p);
-                                  setActiveActionsDropdownId(null);
-                                }}
-                              >
-                                👥 Duplicate to another...
-                              </button>
-                              <button
-                                style={{ padding: "8px 12px", border: "none", background: "none", fontSize: "13px", cursor: "pointer", width: "100%", textAlign: "left" }}
-                                onClick={() => {
-                                  onExportJson(p);
-                                  setActiveActionsDropdownId(null);
-                                }}
-                              >
-                                📥 Export config JSON
-                              </button>
-                              <div style={{ borderTop: "1px solid #ebebeb", margin: "4px 0" }} />
-                              <button
-                                style={{ padding: "8px 12px", border: "none", background: "none", fontSize: "13px", color: "#d82c0d", cursor: "pointer", width: "100%", textAlign: "left" }}
-                                onClick={() => {
-                                  onDeleteOptions(p);
-                                  setActiveActionsDropdownId(null);
-                                }}
-                              >
-                                🗑️ Delete settings
-                              </button>
-                            </div>
-                          </>
+                          <div style={{
+                            position: "absolute",
+                            right: "0px",
+                            top: "32px",
+                            background: "#ffffff",
+                            border: "1.5px solid #ebebeb",
+                            borderRadius: "8px",
+                            boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                            zIndex: 1000,
+                            display: "flex",
+                            flexDirection: "column",
+                            minWidth: "180px",
+                            textAlign: "left",
+                            padding: "6px"
+                          }}>
+                            <button
+                              style={{
+                                padding: "8px 12px",
+                                border: "none",
+                                background: "none",
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                width: "100%",
+                                textAlign: "left",
+                                borderRadius: "4px",
+                                color: "#202223",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px"
+                              }}
+                              className="dropdown-item-hover"
+                              onClick={() => {
+                                onDuplicateOptions(p);
+                                setActiveActionsDropdownId(null);
+                              }}
+                            >
+                              <DuplicateIcon /> Duplicate to another...
+                            </button>
+                            <button
+                              style={{
+                                padding: "8px 12px",
+                                border: "none",
+                                background: "none",
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                width: "100%",
+                                textAlign: "left",
+                                borderRadius: "4px",
+                                color: "#202223",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px"
+                              }}
+                              className="dropdown-item-hover"
+                              onClick={() => {
+                                onExportJson(p);
+                                setActiveActionsDropdownId(null);
+                              }}
+                            >
+                              <ExportIcon /> Export config JSON
+                            </button>
+                            <div style={{ borderTop: "1.5px solid #ebebeb", margin: "4px 6px" }} />
+                            <button
+                              style={{
+                                padding: "8px 12px",
+                                border: "none",
+                                background: "none",
+                                fontSize: "13px",
+                                color: "#d82c0d",
+                                cursor: "pointer",
+                                width: "100%",
+                                textAlign: "left",
+                                borderRadius: "4px",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px"
+                              }}
+                              className="dropdown-item-hover-danger"
+                              onClick={() => {
+                                onDeleteOptions(p);
+                                setActiveActionsDropdownId(null);
+                              }}
+                            >
+                              <TrashIcon style={{ strokeWidth: "2.5px" }} /> Delete settings
+                            </button>
+                          </div>
                         )}
                       </div>
                     </td>
