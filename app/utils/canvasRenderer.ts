@@ -157,7 +157,7 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
       const fontSize = (opt.canvasFontSize ?? 48) * scale;
       ctx.font = `bold ${fontSize}px "${activeFont}", Arial, sans-serif`;
 
-      let shopperText = shopperValues[opt.id] !== undefined ? shopperValues[opt.id] : opt.label;
+      let shopperText = shopperValues[opt.id] !== undefined ? shopperValues[opt.id] : (opt.defaultValue !== undefined ? opt.defaultValue : opt.label);
       if (opt.caseConstraint === "uppercase") shopperText = String(shopperText).toUpperCase();
       if (opt.caseConstraint === "lowercase") shopperText = String(shopperText).toLowerCase();
 

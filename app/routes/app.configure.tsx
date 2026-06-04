@@ -908,6 +908,7 @@ export default function ConfigureProductOptions() {
       {viewMode === "list" ? (
         <ProductCatalogTable
           products={initialProducts}
+          shop={shop}
           onConfigureProduct={handleOpenEditorForProduct}
           onDeleteOptions={handleDeleteOptions}
           onDuplicateOptions={handleDuplicateOptions}

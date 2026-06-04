@@ -11,6 +11,7 @@ export interface CustomizationOption {
   required: boolean;
   priceUpcharge: number;
   placeholder?: string;
+  defaultValue?: string;
   maxChars?: number;
   choices?: string;
   choicesType?: "custom" | "global";

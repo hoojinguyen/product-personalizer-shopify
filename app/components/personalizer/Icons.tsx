@@ -135,3 +135,27 @@ export const EditIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
   </svg>
 );
 
+export const ExternalLinkIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    viewBox="0 0 20 20"
+    width="14"
+    height="14"
+    fill="currentColor"
+    {...props}
+  >
+    <path d="M13 12a1 1 0 0 1 1 1v3.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 16.5v-9A1.5 1.5 0 0 1 3.5 6H7a1 1 0 0 1 0 2H3.5v9h9V13a1 1 0 0 1 1-1zm1.5-8.5H11a1 1 0 0 1 0-2h4.5A1.5 1.5 0 0 1 17 3v4.5a1 1 0 0 1-2 0V4.5L10.7 8.8a1 1 0 0 1-1.4-1.4l4.2-4.3z" />
+  </svg>
+);
+
+export const EyeballIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    viewBox="0 0 20 20"
+    width="14"
+    height="14"
+    fill="currentColor"
+    {...props}
+  >
+    <path d="M10 4.5c-3.6 0-6.8 2.2-8.5 5.5 1.7 3.3 4.9 5.5 8.5 5.5s6.8-2.2 8.5-5.5c-1.7-3.3-4.9-5.5-8.5-5.5zm0 9c-1.9 0-3.5-1.6-3.5-3.5s1.6-3.5 3.5-3.5 3.5 1.6 3.5 3.5-1.6 3.5-3.5 3.5zm0-5.5c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+  </svg>
+);
+

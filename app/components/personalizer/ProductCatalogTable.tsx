@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { SearchIcon, PlusIcon, ImageIcon, DuplicateIcon, ExportIcon, TrashIcon, EditIcon } from "./Icons";
+import { SearchIcon, PlusIcon, ImageIcon, DuplicateIcon, ExportIcon, TrashIcon, EditIcon, EyeballIcon, ExternalLinkIcon } from "./Icons";
 
 interface ProductCatalogTableProps {
   products: any[];
+  shop: string;
   onConfigureProduct: (product: any) => void;
   onDeleteOptions: (product: any) => void;
   onDuplicateOptions: (product: any) => void;
@@ -17,6 +18,7 @@ interface ProductCatalogTableProps {
 
 export function ProductCatalogTable({
   products,
+  shop,
   onConfigureProduct,
   onDeleteOptions,
   onDuplicateOptions,
@@ -312,6 +314,10 @@ export function ProductCatalogTable({
                 }
 
                 const isRowSelected = bulkSelectedIds.includes(p.id);
+                const shopName = shop.replace("https://", "").replace("http://", "").split(".")[0];
+                const numericProductId = p.id.split("/").pop() || "";
+                const adminProductUrl = `https://admin.shopify.com/store/${shopName}/products/${numericProductId}`;
+                const storefrontProductUrl = `https://${shop}/products/${p.handle}`;
 
                 return (
                   <tr key={p.id} style={{ background: isRowSelected ? "#f9fafb" : "transparent" }}>
@@ -395,6 +401,57 @@ export function ProductCatalogTable({
                             textAlign: "left",
                             padding: "6px"
                           }}>
+                            <a
+                              href={storefrontProductUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                padding: "8px 12px",
+                                border: "none",
+                                background: "none",
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                width: "100%",
+                                boxSizing: "border-box",
+                                textAlign: "left",
+                                borderRadius: "4px",
+                                color: "#202223",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                textDecoration: "none"
+                              }}
+                              className="dropdown-item-hover"
+                              onClick={() => setActiveActionsDropdownId(null)}
+                            >
+                              <EyeballIcon style={{ width: "14px", height: "14px" }} /> Preview Storefront
+                            </a>
+                            <a
+                              href={adminProductUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                padding: "8px 12px",
+                                border: "none",
+                                background: "none",
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                width: "100%",
+                                boxSizing: "border-box",
+                                textAlign: "left",
+                                borderRadius: "4px",
+                                color: "#202223",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                textDecoration: "none"
+                              }}
+                              className="dropdown-item-hover"
+                              onClick={() => setActiveActionsDropdownId(null)}
+                            >
+                              <ExternalLinkIcon style={{ width: "14px", height: "14px" }} /> View in Admin
+                            </a>
+                            <div style={{ borderTop: "1.5px solid #ebebeb", margin: "4px 6px" }} />
                             <button
                               style={{
                                 padding: "8px 12px",

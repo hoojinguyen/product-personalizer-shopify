@@ -342,6 +342,7 @@ interface CustomizationOption {
   label: string;
   required: boolean;
   priceUpcharge: number;
+  defaultValue?: string;
   maxChars?: number;
   choices?: string; // Comma-separated or linked asset Set ID
   choicesType?: "custom" | "global"; // Whether it uses custom list or links to an AssetSet
