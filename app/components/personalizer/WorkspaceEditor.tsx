@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { CustomizationOption, isOptionVisible, calculateTotalUpcharges } from "../../utils/configEngine";
 import { drawPersonalizerCanvas } from "../../utils/canvasRenderer";
+import { CloseIcon } from "./Icons";
 
 interface WorkspaceEditorProps {
   product: any;
@@ -21,6 +22,12 @@ export function WorkspaceEditor({
   const [enabled, setEnabled] = useState(false);
   const [options, setOptions] = useState<CustomizationOption[]>([]);
   const [upchargeVariantId, setUpchargeVariantId] = useState("");
+
+  // Dirty flag, Warning modal & Horizontal tab states
+  const [isDirty, setIsDirty] = useState(false);
+  const [linkedTemplateId, setLinkedTemplateId] = useState<string>("");
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [activeLayerTab, setActiveLayerTab] = useState<"properties" | "placements" | "logic">("properties");
 
   // Canvas Alignment and Drag States
   const [showGrid, setShowGrid] = useState(true);
@@ -99,6 +106,7 @@ export function WorkspaceEditor({
       if (configVal) {
         try {
           const config = JSON.parse(configVal);
+          setLinkedTemplateId(config.templateId || "");
           if (config.options) {
             setOptions(config.options);
             setEnabled(config.enabled ?? false);
@@ -109,11 +117,13 @@ export function WorkspaceEditor({
             setUpchargeVariantId("");
           }
         } catch (e) {
+          setLinkedTemplateId("");
           setOptions([getDefaultTextOption()]);
           setEnabled(false);
           setUpchargeVariantId("");
         }
       } else {
+        setLinkedTemplateId("");
         setEnabled(false);
         setUpchargeVariantId("");
         setOptions([getDefaultTextOption()]);
@@ -132,8 +142,16 @@ export function WorkspaceEditor({
       
       // Reset shopper testing values
       setShopperValues({});
+      setIsDirty(false); // Initial loaded state is clean
     }
   }, [product]);
+
+  // Reset horizontal configuration tab when active layer changes
+  useEffect(() => {
+    if (activeLayerId) {
+      setActiveLayerTab("properties");
+    }
+  }, [activeLayerId]);
 
   // Refreshes Unified Canvas rendering loop
   useEffect(() => {
@@ -201,6 +219,7 @@ export function WorkspaceEditor({
     }
 
     setOptions([...options, newOption]);
+    setIsDirty(true);
     setActiveLayerId(newOption.id);
     setRightSidebarMode("designer");
     setIsAddMenuOpen(false);
@@ -209,11 +228,13 @@ export function WorkspaceEditor({
   const handleRemoveOption = (id: string) => {
     if (confirm("Are you sure you want to remove this option layer?")) {
       setOptions(options.filter(o => o.id !== id));
+      setIsDirty(true);
       if (activeLayerId === id) setActiveLayerId(null);
     }
   };
 
   const handleUpdateOption = (id: string, updates: Partial<CustomizationOption>) => {
+    setIsDirty(true);
     setOptions(options.map(o => {
       if (o.id === id) {
         return { ...o, ...updates };
@@ -234,6 +255,7 @@ export function WorkspaceEditor({
     const [removed] = reordered.splice(draggedIndex, 1);
     reordered.splice(idx, 0, removed);
     setOptions(reordered);
+    setIsDirty(true);
     setDraggedIndex(idx);
   };
 
@@ -476,11 +498,31 @@ export function WorkspaceEditor({
   };
 
   const saveConfiguration = () => {
+    if (linkedTemplateId) {
+      setShowWarningModal(true);
+    } else {
+      performSave();
+    }
+  };
+
+  const performSave = () => {
     onSave({
       enabled,
       options,
       upchargeVariantId
     });
+    setIsDirty(false);
+    setShowWarningModal(false);
+  };
+
+  const handleExit = () => {
+    if (isDirty) {
+      if (confirm("You have unsaved changes. Are you sure you want to exit without saving?")) {
+        onBack();
+      }
+    } else {
+      onBack();
+    }
   };
 
   // Get active layer details
@@ -623,6 +665,91 @@ export function WorkspaceEditor({
           border-bottom-color: var(--p-color-border-active);
           background-color: var(--p-color-bg-surface);
         }
+        .sub-tab-header {
+          display: flex;
+          border-bottom: 1px solid var(--p-color-border-muted);
+          background-color: var(--p-color-bg-surface);
+          margin-bottom: 12px;
+        }
+        .sub-tab-button {
+          flex: 1;
+          padding: 8px 4px;
+          background: none;
+          border: none;
+          font-weight: 600;
+          font-size: 12px;
+          cursor: pointer;
+          color: var(--p-color-text-secondary);
+          border-bottom: 2px solid transparent;
+          transition: all 0.15s ease;
+          text-align: center;
+        }
+        .sub-tab-button:hover {
+          color: var(--p-color-text);
+        }
+        .sub-tab-button.active {
+          color: var(--p-color-text-active);
+          border-bottom-color: var(--p-color-border-active);
+        }
+        .warning-modal-backdrop {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0,0,0,0.5);
+          backdrop-filter: blur(4px);
+          z-index: 2000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .warning-modal-card {
+          background: #ffffff;
+          border-radius: 8px;
+          width: 480px;
+          max-width: 90%;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+          border: 1px solid var(--p-color-border-muted);
+        }
+        .warning-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--p-color-border-muted);
+        }
+        .warning-modal-header h3 {
+          margin: 0;
+          font-size: 16px;
+          font-weight: 600;
+          color: #de3618;
+        }
+        .warning-modal-body {
+          padding: 20px;
+          font-size: 14px;
+          color: var(--p-color-text);
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .warning-modal-footer {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          padding: 16px 20px;
+          border-top: 1px solid var(--p-color-border-muted);
+          background: var(--p-color-bg-surface-secondary);
+        }
+        .warning-banner {
+          background-color: #fff4f4;
+          border-left: 4px solid #de3618;
+          padding: 12px;
+          border-radius: 4px;
+          color: #de3618;
+          font-weight: 600;
+          font-size: 13px;
+        }
         .settings-section-title {
           font-weight: 700;
           font-size: 11px;
@@ -682,7 +809,7 @@ export function WorkspaceEditor({
       <div className="editor-header">
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <div style={{ display: "inline-flex" }}>
-            <s-button variant="secondary" onClick={onBack}>
+            <s-button variant="secondary" onClick={handleExit}>
               ← Exit Editor
             </s-button>
           </div>
@@ -695,7 +822,7 @@ export function WorkspaceEditor({
           <s-checkbox
             label="Enable Customizer"
             checked={enabled}
-            onChange={(e: any) => setEnabled(e.currentTarget.checked)}
+            onChange={(e: any) => { setEnabled(e.currentTarget.checked); setIsDirty(true); }}
           />
           <div style={{ display: "inline-flex" }}>
             <s-button variant="primary" onClick={saveConfiguration}>
@@ -914,196 +1041,227 @@ export function WorkspaceEditor({
                 {activeLayer ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                     
-                    {/* Basic Settings */}
-                    <div className="settings-section-title">⚙️ Layer Properties</div>
-                    <div className="settings-group">
-                      <s-text-field
-                        label="Option Label Title"
-                        value={activeLayer.label}
-                        onChange={(e: any) => handleUpdateOption(activeLayer.id, { label: e.currentTarget.value })}
-                      />
-                      
-                      <s-checkbox
-                        label="Shopper validation required"
-                        checked={activeLayer.required}
-                        onChange={(e: any) => handleUpdateOption(activeLayer.id, { required: e.currentTarget.checked })}
-                      />
+                    {/* Horizontal sub-tabs for active layer configuration */}
+                    <div className="sub-tab-header">
+                      <button
+                        className={`sub-tab-button ${activeLayerTab === "properties" ? "active" : ""}`}
+                        onClick={() => setActiveLayerTab("properties")}
+                      >
+                        ⚙️ Properties
+                      </button>
+                      <button
+                        className={`sub-tab-button ${activeLayerTab === "placements" ? "active" : ""}`}
+                        onClick={() => setActiveLayerTab("placements")}
+                      >
+                        📐 Placements
+                      </button>
+                      <button
+                        className={`sub-tab-button ${activeLayerTab === "logic" ? "active" : ""}`}
+                        onClick={() => setActiveLayerTab("logic")}
+                      >
+                        🔗 Logic
+                      </button>
+                    </div>
 
-                      <s-number-field
-                        label="Price Upcharge ($)"
-                        value={String(activeLayer.priceUpcharge)}
-                        onChange={(e: any) => handleUpdateOption(activeLayer.id, { priceUpcharge: parseFloat(e.currentTarget.value) || 0 })}
-                        min={0}
-                        step={0.01}
-                      />
+                    {activeLayerTab === "properties" && (
+                      <>
+                        <div className="settings-section-title">⚙️ Layer Properties</div>
+                        <div className="settings-group">
+                          <s-text-field
+                            label="Option Label Title"
+                            value={activeLayer.label}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { label: e.currentTarget.value })}
+                          />
+                          
+                          <s-checkbox
+                            label="Shopper validation required"
+                            checked={activeLayer.required}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { required: e.currentTarget.checked })}
+                          />
 
-                      {/* Text & Text Area limits */}
-                      {(activeLayer.type === "text" || activeLayer.type === "textarea") && (
-                        <>
                           <s-number-field
-                            label="Characters limit threshold"
-                            value={String(activeLayer.maxChars ?? 0)}
-                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { maxChars: parseInt(e.currentTarget.value) || undefined })}
+                            label="Price Upcharge ($)"
+                            value={String(activeLayer.priceUpcharge)}
+                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { priceUpcharge: parseFloat(e.currentTarget.value) || 0 })}
                             min={0}
+                            step={0.01}
                           />
-                          <s-select
-                            label="Case restriction override"
-                            value={activeLayer.caseConstraint || "normal"}
-                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { caseConstraint: e.currentTarget.value as any })}
-                          >
-                            <s-option value="normal">Normal mixed case</s-option>
-                            <s-option value="uppercase">FORCE UPPERCASE</s-option>
-                            <s-option value="lowercase">force lowercase</s-option>
-                          </s-select>
-                        </>
-                      )}
 
-                      {/* Dropdown / Swatch choices */}
-                      {(activeLayer.type === "select" || activeLayer.type === "swatch" || activeLayer.type === "clipart") && (
-                        <s-text-field
-                          label={activeLayer.type === "swatch" ? "Color Swatches (Hex list comma separated)" : "Choices list (comma separated)"}
-                          value={activeLayer.choices || ""}
-                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { choices: e.currentTarget.value })}
-                          placeholder={activeLayer.type === "swatch" ? "#000, #fff, #ff0000" : "Option A, Option B, Option C"}
-                        />
-                      )}
-                    </div>
+                          {/* Text & Text Area limits */}
+                          {(activeLayer.type === "text" || activeLayer.type === "textarea") && (
+                            <>
+                              <s-number-field
+                                label="Characters limit threshold"
+                                value={String(activeLayer.maxChars ?? 0)}
+                                onChange={(e: any) => handleUpdateOption(activeLayer.id, { maxChars: parseInt(e.currentTarget.value) || undefined })}
+                                min={0}
+                              />
+                              <s-select
+                                label="Case restriction override"
+                                value={activeLayer.caseConstraint || "normal"}
+                                onChange={(e: any) => handleUpdateOption(activeLayer.id, { caseConstraint: e.currentTarget.value as any })}
+                              >
+                                <s-option value="normal">Normal mixed case</s-option>
+                                <s-option value="uppercase">FORCE UPPERCASE</s-option>
+                                <s-option value="lowercase">force lowercase</s-option>
+                              </s-select>
+                            </>
+                          )}
 
-                    {/* Transform Matrix Settings */}
-                    <div className="settings-section-title">📐 Canvas Placements</div>
-                    <div className="settings-group">
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                        <s-number-field
-                          label="X Position (px)"
-                          value={String(activeLayer.canvasX ?? 400)}
-                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasX: parseInt(e.currentTarget.value) || 0 })}
-                        />
-                        <s-number-field
-                          label="Y Position (px)"
-                          value={String(activeLayer.canvasY ?? 400)}
-                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasY: parseInt(e.currentTarget.value) || 0 })}
-                        />
-                      </div>
-
-                      {(activeLayer.type === "text" || activeLayer.type === "textarea") ? (
-                        <s-number-field
-                          label="Logical Font Size (px)"
-                          value={String(activeLayer.canvasFontSize ?? 48)}
-                          onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasFontSize: parseInt(e.currentTarget.value) || 0 })}
-                        />
-                      ) : (
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                          <s-number-field
-                            label="Layer Width (px)"
-                            value={String(activeLayer.canvasWidth ?? 250)}
-                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasWidth: parseInt(e.currentTarget.value) || 0 })}
-                          />
-                          <s-number-field
-                            label="Layer Height (px)"
-                            value={String(activeLayer.canvasHeight ?? 250)}
-                            onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasHeight: parseInt(e.currentTarget.value) || 0 })}
-                          />
-                        </div>
-                      )}
-
-                      <div>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                          <span style={{ fontSize: "13px" }}>Layer Rotation</span>
-                          <span style={{ fontSize: "13px", fontWeight: 600 }}>{activeLayer.canvasRotation ?? 0}°</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="360"
-                          value={activeLayer.canvasRotation ?? 0}
-                          style={{ width: "100%", accentColor: "var(--p-color-border-active)" }}
-                          onChange={(e) => handleUpdateOption(activeLayer.id, { canvasRotation: parseInt(e.target.value) || 0 })}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Conditional Rules Visibility Routing */}
-                    <div className="settings-section-title">🔗 Visibility Conditional Logic</div>
-                    <div className="settings-group">
-                      {(activeLayer.conditionalRules || []).map((rule, ruleIdx) => (
-                        <div key={ruleIdx} style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                          padding: "10px",
-                          border: "1px solid var(--p-color-border-muted)",
-                          borderRadius: "6px",
-                          backgroundColor: "var(--p-color-bg-surface)"
-                        }}>
-                          <s-select
-                            label="If Option..."
-                            value={rule.fieldId}
-                            onChange={(e: any) => {
-                              const updatedRules = [...(activeLayer.conditionalRules || [])];
-                              updatedRules[ruleIdx].fieldId = e.currentTarget.value;
-                              handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
-                            }}
-                          >
-                            <s-option value="">Select option...</s-option>
-                            {options.filter(o => o.id !== activeLayer.id).map(o => (
-                              <s-option key={o.id} value={o.id}>{o.label}</s-option>
-                            ))}
-                          </s-select>
-
-                          <s-select
-                            label="Operator"
-                            value={rule.operator}
-                            onChange={(e: any) => {
-                              const updatedRules = [...(activeLayer.conditionalRules || [])];
-                              updatedRules[ruleIdx].operator = e.currentTarget.value as any;
-                              handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
-                            }}
-                          >
-                            <s-option value="equals">Equals</s-option>
-                            <s-option value="not_equals">Not Equals</s-option>
-                            <s-option value="checked">Checked</s-option>
-                            <s-option value="unchecked">Unchecked</s-option>
-                          </s-select>
-
-                          {rule.operator !== "checked" && rule.operator !== "unchecked" && (
+                          {/* Dropdown / Swatch choices */}
+                          {(activeLayer.type === "select" || activeLayer.type === "swatch" || activeLayer.type === "clipart") && (
                             <s-text-field
-                              label="Value to match"
-                              placeholder="Value..."
-                              value={rule.value}
-                              onChange={(e: any) => {
-                                const updatedRules = [...(activeLayer.conditionalRules || [])];
-                                updatedRules[ruleIdx].value = e.currentTarget.value;
-                                handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
-                              }}
+                              label={activeLayer.type === "swatch" ? "Color Swatches (Hex list comma separated)" : "Choices list (comma separated)"}
+                              value={activeLayer.choices || ""}
+                              onChange={(e: any) => handleUpdateOption(activeLayer.id, { choices: e.currentTarget.value })}
+                              placeholder={activeLayer.type === "swatch" ? "#000, #fff, #ff0000" : "Option A, Option B, Option C"}
                             />
                           )}
+                        </div>
+                      </>
+                    )}
+
+                    {activeLayerTab === "placements" && (
+                      <>
+                        <div className="settings-section-title">📐 Canvas Placements</div>
+                        <div className="settings-group">
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                            <s-number-field
+                              label="X Position (px)"
+                              value={String(activeLayer.canvasX ?? 400)}
+                              onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasX: parseInt(e.currentTarget.value) || 0 })}
+                            />
+                            <s-number-field
+                              label="Y Position (px)"
+                              value={String(activeLayer.canvasY ?? 400)}
+                              onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasY: parseInt(e.currentTarget.value) || 0 })}
+                            />
+                          </div>
+
+                          {(activeLayer.type === "text" || activeLayer.type === "textarea") ? (
+                            <s-number-field
+                              label="Logical Font Size (px)"
+                              value={String(activeLayer.canvasFontSize ?? 48)}
+                              onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasFontSize: parseInt(e.currentTarget.value) || 0 })}
+                            />
+                          ) : (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                              <s-number-field
+                                label="Layer Width (px)"
+                                value={String(activeLayer.canvasWidth ?? 250)}
+                                onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasWidth: parseInt(e.currentTarget.value) || 0 })}
+                              />
+                              <s-number-field
+                                label="Layer Height (px)"
+                                value={String(activeLayer.canvasHeight ?? 250)}
+                                onChange={(e: any) => handleUpdateOption(activeLayer.id, { canvasHeight: parseInt(e.currentTarget.value) || 0 })}
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                              <span style={{ fontSize: "13px" }}>Layer Rotation</span>
+                              <span style={{ fontSize: "13px", fontWeight: 600 }}>{activeLayer.canvasRotation ?? 0}°</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="360"
+                              value={activeLayer.canvasRotation ?? 0}
+                              style={{ width: "100%", accentColor: "var(--p-color-border-active)" }}
+                              onChange={(e) => handleUpdateOption(activeLayer.id, { canvasRotation: parseInt(e.target.value) || 0 })}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {activeLayerTab === "logic" && (
+                      <>
+                        <div className="settings-section-title">🔗 Visibility Conditional Logic</div>
+                        <div className="settings-group">
+                          {(activeLayer.conditionalRules || []).map((rule, ruleIdx) => (
+                            <div key={ruleIdx} style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "8px",
+                              padding: "10px",
+                              border: "1px solid var(--p-color-border-muted)",
+                              borderRadius: "6px",
+                              backgroundColor: "var(--p-color-bg-surface)"
+                            }}>
+                              <s-select
+                                label="If Option..."
+                                value={rule.fieldId}
+                                onChange={(e: any) => {
+                                  const updatedRules = [...(activeLayer.conditionalRules || [])];
+                                  updatedRules[ruleIdx].fieldId = e.currentTarget.value;
+                                  handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                                }}
+                              >
+                                <s-option value="">Select option...</s-option>
+                                {options.filter(o => o.id !== activeLayer.id).map(o => (
+                                  <s-option key={o.id} value={o.id}>{o.label}</s-option>
+                                ))}
+                              </s-select>
+
+                              <s-select
+                                label="Operator"
+                                value={rule.operator}
+                                onChange={(e: any) => {
+                                  const updatedRules = [...(activeLayer.conditionalRules || [])];
+                                  updatedRules[ruleIdx].operator = e.currentTarget.value as any;
+                                  handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                                }}
+                              >
+                                <s-option value="equals">Equals</s-option>
+                                <s-option value="not_equals">Not Equals</s-option>
+                                <s-option value="checked">Checked</s-option>
+                                <s-option value="unchecked">Unchecked</s-option>
+                              </s-select>
+
+                              {rule.operator !== "checked" && rule.operator !== "unchecked" && (
+                                <s-text-field
+                                  label="Value to match"
+                                  placeholder="Value..."
+                                  value={rule.value}
+                                  onChange={(e: any) => {
+                                    const updatedRules = [...(activeLayer.conditionalRules || [])];
+                                    updatedRules[ruleIdx].value = e.currentTarget.value;
+                                    handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                                  }}
+                                />
+                              )}
+
+                              <div style={{ display: "inline-flex" }}>
+                                <s-button
+                                  variant="secondary"
+                                  onClick={() => {
+                                    const updatedRules = (activeLayer.conditionalRules || []).filter((_, rIdx) => rIdx !== ruleIdx);
+                                    handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
+                                  }}
+                                >
+                                  Remove Rule
+                                </s-button>
+                              </div>
+                            </div>
+                          ))}
 
                           <div style={{ display: "inline-flex" }}>
                             <s-button
                               variant="secondary"
                               onClick={() => {
-                                const updatedRules = (activeLayer.conditionalRules || []).filter((_, rIdx) => rIdx !== ruleIdx);
+                                const updatedRules = [...(activeLayer.conditionalRules || []), { fieldId: "", operator: "equals" as const, value: "" }];
                                 handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
                               }}
                             >
-                              Remove Rule
+                              ➕ Add Visibility Rule
                             </s-button>
                           </div>
                         </div>
-                      ))}
-
-                      <div style={{ display: "inline-flex" }}>
-                        <s-button
-                          variant="secondary"
-                          onClick={() => {
-                            const updatedRules = [...(activeLayer.conditionalRules || []), { fieldId: "", operator: "equals" as const, value: "" }];
-                            handleUpdateOption(activeLayer.id, { conditionalRules: updatedRules });
-                          }}
-                        >
-                          ➕ Add Visibility Rule
-                        </s-button>
-                      </div>
-                    </div>
+                      </>
+                    )}
 
                   </div>
                 ) : (
@@ -1113,7 +1271,7 @@ export function WorkspaceEditor({
                       <s-checkbox
                         label="Storefront customizable widget enabled"
                         checked={enabled}
-                        onChange={(e: any) => setEnabled(e.currentTarget.checked)}
+                        onChange={(e: any) => { setEnabled(e.currentTarget.checked); setIsDirty(true); }}
                       />
 
                       {variants.length > 0 ? (
@@ -1121,7 +1279,7 @@ export function WorkspaceEditor({
                           label="Synced Upcharge Variant"
                           details="Sync customization fees directly inside the main cart line item using Cart Transform API"
                           value={upchargeVariantId}
-                          onChange={(e: any) => setUpchargeVariantId(e.currentTarget.value)}
+                          onChange={(e: any) => { setUpchargeVariantId(e.currentTarget.value); setIsDirty(true); }}
                         >
                           <s-option value="">None (No upcharge variant mapped)</s-option>
                           {variants.map((v: any) => (
@@ -1135,7 +1293,7 @@ export function WorkspaceEditor({
                           label="Synced Upcharge Variant ID"
                           details="Specify the ProductVariant GID linked downstream to checkout upcharge properties."
                           value={upchargeVariantId}
-                          onChange={(e: any) => setUpchargeVariantId(e.currentTarget.value)}
+                          onChange={(e: any) => { setUpchargeVariantId(e.currentTarget.value); setIsDirty(true); }}
                           placeholder="gid://shopify/ProductVariant/..."
                         />
                       )}
@@ -1304,8 +1462,54 @@ export function WorkspaceEditor({
 
           </div>
         </div>
-
       </div>
+
+      {showWarningModal && (
+        <div className="warning-modal-backdrop">
+          <div className="warning-modal-card">
+            <div className="warning-modal-header">
+              <h3>⚠️ Shared Template Connection</h3>
+              <button
+                className="modal-close"
+                onClick={() => setShowWarningModal(false)}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="warning-modal-body">
+              <div className="warning-banner">
+                Warning: Editing directly will disconnect this product from the template!
+              </div>
+              <p style={{ margin: 0, lineHeight: "1.5" }}>
+                This product options configuration is currently synchronized with a shared template. 
+                Saving custom option changes directly on this product will detach it from the template, 
+                and future updates to the template will no longer apply.
+              </p>
+              <p style={{ margin: 0, fontWeight: "bold" }}>
+                Would you like to edit the shared template instead or overwrite the settings for this product?
+              </p>
+            </div>
+            <div className="warning-modal-footer">
+              <div style={{ display: "inline-flex" }}>
+                <s-button variant="secondary" onClick={() => setShowWarningModal(false)}>
+                  Cancel
+                </s-button>
+              </div>
+              <div style={{ display: "inline-flex" }}>
+                <s-button variant="secondary" onClick={() => window.location.href = "/app/templates"}>
+                  🔗 Go to template page
+                </s-button>
+              </div>
+              <div style={{ display: "inline-flex" }}>
+                <s-button variant="primary" onClick={() => { setLinkedTemplateId(""); performSave(); }}>
+                  Overwrite Configuration
+                </s-button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
