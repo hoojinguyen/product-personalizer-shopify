@@ -48,6 +48,10 @@ _Avoid_: SVG generator, print layouter, layout builder
 The unified network adapter module that handles pre-staging, storage-bucket uploads, registry mutations, and public CDN URL resolution for app assets and customer customizations.
 _Avoid_: File uploader, image stages, asset poster
 
+**Fulfillment Package Packager**:
+The dynamic compilation module that aggregates order metadata, customer asset uploads, and print layouts, packaging them into a streaming ZIP archive for order fulfillment.
+_Avoid_: Zip packager, package zipper, zip compiler
+
 
 
 
