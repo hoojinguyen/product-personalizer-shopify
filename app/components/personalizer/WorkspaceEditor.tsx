@@ -555,42 +555,29 @@ export function WorkspaceEditor({
         .editor-modal-backdrop {
           position: fixed;
           top: 0; left: 0; right: 0; bottom: 0;
-          background-color: rgba(0, 0, 0, 0.45);
-          backdrop-filter: blur(4px);
-          -webkit-backdrop-filter: blur(4px);
+          background-color: var(--p-color-bg-surface-secondary, #f6f6f7);
           z-index: 999;
           display: flex;
-          align-items: center;
-          justify-content: center;
+          align-items: stretch;
+          justify-content: stretch;
           font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-          animation: editorFadeIn 0.2s ease-out forwards;
+          animation: workspaceFadeIn 0.25s ease-out forwards;
         }
-        @keyframes editorFadeIn {
+        @keyframes workspaceFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
         }
         .editor-modal-card {
-          width: 95vw;
-          height: 90vh;
-          max-width: 1400px;
+          width: 100%;
+          height: 100%;
+          max-width: none;
           background-color: var(--p-color-bg-surface-secondary, #f6f6f7);
-          border: 1px solid var(--p-color-border-muted, #e1e3e5);
-          border-radius: 12px;
-          box-shadow: 0 12px 36px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.1);
+          border: none;
+          border-radius: 0;
+          box-shadow: none;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          animation: editorScaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        @keyframes editorScaleUp {
-          from {
-            opacity: 0;
-            transform: scale(0.96);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
         }
         .editor-header {
           height: 64px;
@@ -1385,7 +1372,20 @@ export function WorkspaceEditor({
               <s-option value="Back Mockup View">Back View</s-option>
             </s-select>
 
-            <s-badge tone="info">Scale: 50%</s-badge>
+            <span
+              className="section-title-badge"
+              style={{
+                backgroundColor: "#e0f2fe",
+                color: "#0369a1",
+                border: "1px solid #bae6fd",
+                fontSize: "11px",
+                padding: "4px 8px",
+                textTransform: "none",
+                fontWeight: 600
+              }}
+            >
+              Scale: 50%
+            </span>
           </div>
 
           {/* Styled Canvas Card Sheet */}

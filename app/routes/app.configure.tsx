@@ -493,6 +493,18 @@ export default function ConfigureProductOptions() {
     setConfirmModal(prev => ({ ...prev, isOpen: false }));
   };
 
+  if (viewMode === "editor") {
+    return (
+      <WorkspaceEditor
+        product={selectedProduct}
+        assets={assets}
+        shop={shop}
+        onBack={() => setViewMode("list")}
+        onSave={handleSaveConfiguration}
+      />
+    );
+  }
+
   return (
     <s-page heading="Product Options">
       
@@ -905,30 +917,20 @@ export default function ConfigureProductOptions() {
         }
       `}</style>
 
-      {viewMode === "list" ? (
-        <ProductCatalogTable
-          products={initialProducts}
-          shop={shop}
-          onConfigureProduct={handleOpenEditorForProduct}
-          onDeleteOptions={handleDeleteOptions}
-          onDuplicateOptions={handleDuplicateOptions}
-          onExportJson={handleExportJson}
-          onToggleStatus={handleToggleStatus}
-          savingStatusToggleId={savingStatusToggleId}
-          onOpenAddModal={() => setIsAddModalOpen(true)}
-          onBulkDelete={handleBulkDelete}
-          onBulkActivate={handleBulkActivate}
-          onBulkDeactivate={handleBulkDeactivate}
-        />
-      ) : (
-        <WorkspaceEditor
-          product={selectedProduct}
-          assets={assets}
-          shop={shop}
-          onBack={() => setViewMode("list")}
-          onSave={handleSaveConfiguration}
-        />
-      )}
+      <ProductCatalogTable
+        products={initialProducts}
+        shop={shop}
+        onConfigureProduct={handleOpenEditorForProduct}
+        onDeleteOptions={handleDeleteOptions}
+        onDuplicateOptions={handleDuplicateOptions}
+        onExportJson={handleExportJson}
+        onToggleStatus={handleToggleStatus}
+        savingStatusToggleId={savingStatusToggleId}
+        onOpenAddModal={() => setIsAddModalOpen(true)}
+        onBulkDelete={handleBulkDelete}
+        onBulkActivate={handleBulkActivate}
+        onBulkDeactivate={handleBulkDeactivate}
+      />
 
       {/* Catalog Selector Modal */}
       <CatalogPickerModal
