@@ -33,3 +33,6 @@ shopify.app.*.toml
 
 .agents
 skills-lock.json
+
+
+outputs/
