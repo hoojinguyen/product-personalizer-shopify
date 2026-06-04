@@ -2,6 +2,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { TemplateDownstreamSynchronizer, ShopifyAdminGraphQLAdapter } from "../utils/templateSync";
 import { useState, useEffect, useRef } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
@@ -53,115 +54,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
 
+  const shopifyAdapter = new ShopifyAdminGraphQLAdapter(admin);
+  const synchronizer = new TemplateDownstreamSynchronizer(db, shopifyAdapter);
+
   if (intent === "save_template") {
-    const id = formData.get("id") as string;
+    const id = (formData.get("id") as string) || undefined;
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
     const optionsJson = formData.get("options") as string;
-    const productLinksJson = formData.get("productLinks") as string; // List of Shopify Product GIDs to link
-    const unlinkedProductsJson = formData.get("unlinkedProducts") as string; // List of Shopify Product GIDs to unlink
+    const productLinksJson = formData.get("productLinks") as string;
 
     let productLinks: string[] = [];
     try {
       productLinks = JSON.parse(productLinksJson);
     } catch (e) {}
 
-    let unlinkedProducts: string[] = [];
     try {
-      unlinkedProducts = JSON.parse(unlinkedProductsJson);
-    } catch (e) {}
+      const result = await synchronizer.sync(
+        shop,
+        { id, name, description, options: optionsJson },
+        productLinks
+      );
 
-    let template;
-    if (id) {
-      template = await db.template.update({
-        where: { id, shop },
-        data: { name, description, options: optionsJson }
+      const template = await db.template.findFirst({
+        where: { id: result.templateId, shop },
       });
-    } else {
-      template = await db.template.create({
-        data: { shop, name, description, options: optionsJson }
-      });
+
+      return { success: result.success, template, userErrors: result.errors };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-
-    // Hybrid Mapped-Sync: Propagate updated options config to linked products
-    const parsedOptions = JSON.parse(optionsJson);
-    const metafieldPayload = {
-      enabled: true,
-      templateId: template.id,
-      layoutMode: parsedOptions.layoutMode || "stacked",
-      brandColor: parsedOptions.brandColor || "#008060",
-      buttonColor: parsedOptions.buttonColor || "#008060",
-      buttonTextColor: parsedOptions.buttonTextColor || "#ffffff",
-      heading: parsedOptions.heading || "Personalize Your Item",
-      options: parsedOptions.options || []
-    };
-
-    // Bulk set metafields for linked products
-    const userErrors: any[] = [];
-    for (const productId of productLinks) {
-      try {
-        const res = await admin.graphql(
-          `#graphql
-          mutation setProductMetafield($metafields: [MetafieldsSetInput!]!) {
-            metafieldsSet(metafields: $metafields) {
-              userErrors {
-                field
-                message
-              }
-            }
-          }`,
-          {
-            variables: {
-              metafields: [
-                {
-                  ownerId: productId,
-                  namespace: "app",
-                  key: "customization_config",
-                  type: "json",
-                  value: JSON.stringify(metafieldPayload)
-                }
-              ]
-            }
-          }
-        );
-        const resJson = await res.json();
-        const errs = resJson.data?.metafieldsSet?.userErrors || [];
-        if (errs.length > 0) userErrors.push(...errs);
-      } catch (err: any) {
-        userErrors.push({ field: productId, message: err.message });
-      }
-    }
-
-    // Clear metafields on unlinked products
-    for (const productId of unlinkedProducts) {
-      try {
-        await admin.graphql(
-          `#graphql
-          mutation clearProductMetafield($metafields: [MetafieldsSetInput!]!) {
-            metafieldsSet(metafields: $metafields) {
-              userErrors {
-                message
-              }
-            }
-          }`,
-          {
-            variables: {
-              metafields: [
-                {
-                  ownerId: productId,
-                  namespace: "app",
-                  key: "customization_config",
-                  type: "json",
-                  value: JSON.stringify({ enabled: false, options: [] })
-                }
-              ]
-            }
-          }
-        );
-      } catch (e) {}
-    }
-
-    return { success: true, template, userErrors };
   }
 
   if (intent === "duplicate_template") {
@@ -187,144 +109,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "link_products") {
     const templateId = formData.get("templateId") as string;
     const productLinksJson = formData.get("productLinks") as string;
-    const unlinkedProductsJson = formData.get("unlinkedProducts") as string;
 
     let productLinks: string[] = [];
     try {
       productLinks = JSON.parse(productLinksJson);
     } catch (e) {}
 
-    let unlinkedProducts: string[] = [];
     try {
-      unlinkedProducts = JSON.parse(unlinkedProductsJson);
-    } catch (e) {}
-
-    const template = await db.template.findFirst({
-      where: { id: templateId, shop }
-    });
-    if (!template) {
-      return { error: "Template not found" };
+      const result = await synchronizer.sync(
+        shop,
+        { id: templateId },
+        productLinks
+      );
+      return { success: result.success, userErrors: result.errors };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-
-    const parsedOptions = JSON.parse(template.options);
-    const metafieldPayload = {
-      enabled: true,
-      templateId: template.id,
-      layoutMode: parsedOptions.layoutMode || "stacked",
-      brandColor: parsedOptions.brandColor || "#008060",
-      buttonColor: parsedOptions.buttonColor || "#008060",
-      buttonTextColor: parsedOptions.buttonTextColor || "#ffffff",
-      heading: parsedOptions.heading || "Personalize Your Item",
-      options: parsedOptions.options || []
-    };
-
-    const userErrors: any[] = [];
-    for (const productId of productLinks) {
-      try {
-        const res = await admin.graphql(
-          `#graphql
-          mutation setProductMetafield($metafields: [MetafieldsSetInput!]!) {
-            metafieldsSet(metafields: $metafields) {
-              userErrors {
-                field
-                message
-              }
-            }
-          }`,
-          {
-            variables: {
-              metafields: [
-                {
-                  ownerId: productId,
-                  namespace: "app",
-                  key: "customization_config",
-                  type: "json",
-                  value: JSON.stringify(metafieldPayload)
-                }
-              ]
-            }
-          }
-        );
-        const resJson = await res.json();
-        const errs = resJson.data?.metafieldsSet?.userErrors || [];
-        if (errs.length > 0) userErrors.push(...errs);
-      } catch (err: any) {
-        userErrors.push({ field: productId, message: err.message });
-      }
-    }
-
-    for (const productId of unlinkedProducts) {
-      try {
-        await admin.graphql(
-          `#graphql
-          mutation clearProductMetafield($metafields: [MetafieldsSetInput!]!) {
-            metafieldsSet(metafields: $metafields) {
-              userErrors {
-                message
-              }
-            }
-          }`,
-          {
-            variables: {
-              metafields: [
-                {
-                  ownerId: productId,
-                  namespace: "app",
-                  key: "customization_config",
-                  type: "json",
-                  value: JSON.stringify({ enabled: false, options: [] })
-                }
-              ]
-            }
-          }
-        );
-      } catch (e) {}
-    }
-
-    return { success: true, userErrors };
   }
 
   if (intent === "delete_template") {
     const id = formData.get("id") as string;
-    const linkedProductsJson = formData.get("linkedProducts") as string;
-    let linkedProducts: string[] = [];
-    try { linkedProducts = JSON.parse(linkedProductsJson); } catch (e) {}
-
-    // Delete Template
-    await db.template.delete({
-      where: { id, shop }
-    });
-
-    // Clear metafields on previously linked products
-    for (const productId of linkedProducts) {
-      try {
-        await admin.graphql(
-          `#graphql
-          mutation setProductMetafield($metafields: [MetafieldsSetInput!]!) {
-            metafieldsSet(metafields: $metafields) {
-              userErrors {
-                message
-              }
-            }
-          }`,
-          {
-            variables: {
-              metafields: [
-                {
-                  ownerId: productId,
-                  namespace: "app",
-                  key: "customization_config",
-                  type: "json",
-                  value: JSON.stringify({ enabled: false, options: [] })
-                }
-              ]
-            }
-          }
-        );
-      } catch (e) {}
+    try {
+      const result = await synchronizer.unsync(shop, id);
+      return { success: result.success, deleted: id, userErrors: result.errors };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-
-    return { success: true, deleted: id };
   }
 
   return { error: "Unknown intent" };

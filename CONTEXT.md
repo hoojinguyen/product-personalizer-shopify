@@ -52,6 +52,11 @@ _Avoid_: File uploader, image stages, asset poster
 The dynamic compilation module that aggregates order metadata, customer asset uploads, and print layouts, packaging them into a streaming ZIP archive for order fulfillment.
 _Avoid_: Zip packager, package zipper, zip compiler
 
+**Template Sync**:
+The synchronization module that persists template option schemas to the local database and propagates corresponding Personalization Config payloads downstream to linked storefront products.
+_Avoid_: Template Synchronizer, options pusher, config updater
+
+
 
 
 
