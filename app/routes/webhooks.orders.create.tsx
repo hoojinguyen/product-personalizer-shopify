@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { compilePrintFile } from "../utils/printCompiler";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, admin, payload, topic } = await authenticate.webhook(request);
@@ -70,157 +71,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.warn("Failed to parse product customization config:", e);
       }
 
-      // Construct a highly precise, crisp, scalable vector SVG for manufacturing
-      // CNC, laser engravers, and print-on-demand printers require vector SVGs because they scale infinitely
-      const svgWidth = 800;
-      const svgHeight = 800;
-
-      let svgLayers = "";
-      let base64Fonts = "";
-
-      if (config && Array.isArray(config.options)) {
-        for (const opt of config.options) {
-          const val = propertiesMap[opt.label];
-          if (!val) continue;
-
-          const cx = opt.canvasX ?? 400;
-          const cy = opt.canvasY ?? 400;
-          const rot = opt.canvasRotation ?? 0;
-
-          if (opt.type === "text") {
-            // Find if there is a dynamic font selected
-            let fontName = "Arial";
-            let fontColor = "#000000";
-
-            // Find font and color parameters from selected properties
-            for (const otherOpt of config.options) {
-              const otherVal = propertiesMap[otherOpt.label];
-              if (otherOpt.label.toLowerCase().includes("font") || otherOpt.label.toLowerCase().includes("style")) {
-                fontName = otherVal || "Arial";
-              }
-              if (otherOpt.label.toLowerCase().includes("color") || otherOpt.type === "swatch") {
-                fontColor = otherVal || "#000000";
-              }
-            }
-
-            // Fetch and base64 embed custom font if it is not already embedded
-            if (fontName !== "Arial" && fontName !== "Georgia" && !base64Fonts.includes(fontName)) {
-              const fontAsset = await db.asset.findFirst({
-                where: { shop, type: "FONTS", name: fontName }
-              });
-              if (fontAsset) {
-                try {
-                  const assetData = JSON.parse(fontAsset.value);
-                  const fontRes = await fetch(assetData.url);
-                  if (fontRes.ok) {
-                    const buf = Buffer.from(await fontRes.arrayBuffer());
-                    const b64 = buf.toString("base64");
-                    base64Fonts += `
-                      @font-face {
-                        font-family: "${fontName}";
-                        src: url("data:font/truetype;charset=utf-8;base64,${b64}") format("truetype");
-                      }
-                    `;
-                  }
-                } catch (err) {
-                  console.warn(`Font fetch failed for ${fontName}:`, err);
-                }
-              }
-            }
-
-            const fontSize = opt.canvasFontSize ?? 48;
-            svgLayers += `
-              <g transform="translate(${cx}, ${cy}) rotate(${rot})">
-                <text
-                  text-anchor="middle"
-                  alignment-baseline="middle"
-                  dominant-baseline="central"
-                  font-family="'${fontName}', Arial, sans-serif"
-                  font-size="${fontSize}"
-                  fill="${fontColor}"
-                  font-weight="bold"
-                >${val}</text>
-              </g>
-            `;
-          } else if ((opt.type === "clipart" || opt.type === "file") && val) {
-            const w = opt.canvasWidth ?? 250;
-            const h = opt.canvasHeight ?? 250;
-            
-            // Try to download and inline image as base64 for self-contained SVG
-            let imageHref = val;
-            try {
-              const imgRes = await fetch(val);
-              if (imgRes.ok) {
-                const buf = Buffer.from(await imgRes.arrayBuffer());
-                const contentType = imgRes.headers.get("content-type") || "image/png";
-                imageHref = `data:${contentType};base64,${buf.toString("base64")}`;
-              }
-            } catch (err) {
-              console.warn("Failed to inline image base64, using raw URL:", err);
-            }
-
-            svgLayers += `
-              <g transform="translate(${cx}, ${cy}) rotate(${rot})">
-                <image
-                  href="${imageHref}"
-                  x="-${w / 2}"
-                  y="-${h / 2}"
-                  width="${w}"
-                  height="${h}"
-                />
-              </g>
-            `;
-          }
+      // Compile the manufacturing-ready vector SVG print file using the deep Print File Compiler module
+      const { svgContent, warnings } = await compilePrintFile(
+        {
+          shopperValues: propertiesMap,
+          config: config?.options || [],
+        },
+        {
+          shop,
+          orderName: `#${payload.name}`,
+          lineItemTitle: item.title,
         }
-      }
+      );
 
-      if (!svgLayers) {
-        // Fallback to legacy single text rendering if config is not present
-        const customText = propertiesMap["Custom Engraving Text"] || propertiesMap["Engraving Text"] || "";
-        const fontStyle = propertiesMap["Font Style"] || propertiesMap["Font"] || "Arial";
-        const textColor = propertiesMap["Engraving Color"] || propertiesMap["Text Color"] || "#000000";
-        svgLayers = `
-          <g transform="translate(400, 400)">
-            <text
-              text-anchor="middle"
-              alignment-baseline="middle"
-              dominant-baseline="central"
-              font-family="${fontStyle}, Arial, sans-serif"
-              font-size="80"
-              fill="${textColor}"
-              font-weight="bold"
-            >${customText}</text>
-          </g>
-        `;
+      if (warnings.length > 0) {
+        console.warn(`Print compilation warnings for order item ${item.id}:`, warnings);
       }
-
-      // Build SVG nodes
-      const svgContent = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgWidth} ${svgHeight}" width="${svgWidth}" height="${svgHeight}">
-          <defs>
-            <style>
-              ${base64Fonts}
-            </style>
-          </defs>
-          <!-- Base background context -->
-          <rect width="100%" height="100%" fill="#ffffff" />
-          
-          <!-- Base product image reference (if exists, kept subtle as background context) -->
-          ${baseProductImageUrl ? `<image href="${baseProductImageUrl}" x="50" y="50" width="700" height="700" opacity="0.1" />` : ""}
-          
-          <!-- Razor-sharp customized options layers -->
-          ${svgLayers}
-          
-          <!-- Precise bounding boxes & production details (at top boundary) -->
-          <rect x="10" y="10" width="780" height="780" fill="none" stroke="#008060" stroke-width="1" stroke-dasharray="3,3" />
-          <text x="25" y="35" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#008060" font-weight="bold">
-            PRODUCTION READY — Infinite Vector Scale
-          </text>
-          <text x="25" y="55" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6d7175">
-            Order: #${payload.name} | Item: ${item.title}
-          </text>
-        </svg>
-      `.trim();
 
       // Step 1: Securely stage the high-res SVG upload via Shopify Files API
       const filename = `print_${payload.id}_${item.id}.svg`;

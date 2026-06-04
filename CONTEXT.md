@@ -40,6 +40,10 @@ _Avoid_: Upcharge Item, fee variant, stacked variant
 The automatic Shopify Function-driven merging of customizer choices and dynamic fees directly into the main checkout product without auxiliary items.
 _Avoid_: Cart Sync, cart listener, item linkage
 
+**Print File Compiler**:
+The headless vector layout compiler module that processes a shopper's personalization choices against a Personalization Config to generate a self-contained vector SVG print file.
+_Avoid_: SVG generator, print layouter, layout builder
+
 
 
 
