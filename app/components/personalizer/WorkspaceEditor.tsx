@@ -37,6 +37,7 @@ export function WorkspaceEditor({
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null);
   const [hoveredOptionId, setHoveredOptionId] = useState<string | null>(null);
+  const [scale, setScale] = useState(0.7);
 
   // Reorder and popover states
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
@@ -175,13 +176,13 @@ export function WorkspaceEditor({
       shopperValues,
       bgImage,
       mockupView,
-      scale: 0.5, // Admin canvas workspace scale
+      scale, // Admin canvas workspace scale
       activeLayerId: rightSidebarMode === "designer" ? activeLayerId : null, // Hide active outline bounds in storefront preview mode
       hoveredOptionId,
       showGrid,
       livePreview
     });
-  }, [options, bgImage, showGrid, livePreview, activeLayerId, hoveredOptionId, shopperValues, mockupView, rightSidebarMode]);
+  }, [options, bgImage, showGrid, livePreview, activeLayerId, hoveredOptionId, shopperValues, mockupView, rightSidebarMode, scale]);
 
   function getDefaultTextOption(): CustomizationOption {
     return {
@@ -279,8 +280,8 @@ export function WorkspaceEditor({
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 400;
-    const y = ((e.clientY - rect.top) / rect.height) * 400;
+    const x = ((e.clientX - rect.left) / rect.width) * 800;
+    const y = ((e.clientY - rect.top) / rect.height) * 800;
     return { x, y };
   };
 
@@ -288,8 +289,8 @@ export function WorkspaceEditor({
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (rightSidebarMode !== "designer") return; // Prevent edits in shopper mode
     const { x, y } = getCanvasMousePos(e);
-    const mappedX = x * 2;
-    const mappedY = y * 2;
+    const mappedX = x;
+    const mappedY = y;
 
     if (activeLayerId) {
       const opt = options.find(o => o.id === activeLayerId);
@@ -413,8 +414,8 @@ export function WorkspaceEditor({
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (rightSidebarMode !== "designer") return;
     const { x, y } = getCanvasMousePos(e);
-    const mappedX = x * 2;
-    const mappedY = y * 2;
+    const mappedX = x;
+    const mappedY = y;
 
     const opt = options.find(o => o.id === activeLayerId);
 
@@ -1397,21 +1398,64 @@ export function WorkspaceEditor({
               <s-option value="Front Mockup View">Front View</s-option>
               <s-option value="Back Mockup View">Back View</s-option>
             </s-select>
+            <span style={{ color: "var(--p-color-border-muted)" }}>|</span>
 
-            <span
-              className="section-title-badge"
-              style={{
-                backgroundColor: "#e0f2fe",
-                color: "#0369a1",
-                border: "1px solid #bae6fd",
-                fontSize: "11px",
-                padding: "4px 8px",
-                textTransform: "none",
-                fontWeight: 600
-              }}
-            >
-              Scale: 50%
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <button
+                className="btn-secondary"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  padding: 0,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "bold",
+                  fontSize: "16px",
+                  cursor: scale <= 0.4 ? "not-allowed" : "pointer"
+                }}
+                disabled={scale <= 0.4}
+                onClick={() => setScale(prev => Math.max(0.4, parseFloat((prev - 0.1).toFixed(1))))}
+              >
+                -
+              </button>
+              <span
+                className="section-title-badge"
+                style={{
+                  backgroundColor: "#e0f2fe",
+                  color: "#0369a1",
+                  border: "1px solid #bae6fd",
+                  fontSize: "11px",
+                  padding: "4px 8px",
+                  textTransform: "none",
+                  fontWeight: 600,
+                  minWidth: "70px",
+                  textAlign: "center"
+                }}
+              >
+                Scale: {Math.round(scale * 100)}%
+              </span>
+              <button
+                className="btn-secondary"
+                style={{
+                  width: "28px",
+                  height: "28px",
+                  padding: 0,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: "bold",
+                  fontSize: "16px",
+                  cursor: scale >= 1.0 ? "not-allowed" : "pointer"
+                }}
+                disabled={scale >= 1.0}
+                onClick={() => setScale(prev => Math.min(1.0, parseFloat((prev + 0.1).toFixed(1))))}
+              >
+                +
+              </button>
+            </div>
           </div>
 
           {/* Styled Canvas Card Sheet */}
@@ -1434,9 +1478,10 @@ export function WorkspaceEditor({
             {rightSidebarMode === "designer" && activeLayerId && (() => {
               const opt = options.find(o => o.id === activeLayerId);
               if (!opt || !isOptionVisible(opt, shopperValues)) return null;
+              const isText = opt.type === "text" || opt.type === "textarea";
               return (
                 <div className="coordinates-overlay">
-                  X: {opt.canvasX} | Y: {opt.canvasY} {opt.canvasWidth && `| W: ${opt.canvasWidth} H: ${opt.canvasHeight}`} | Rotation: {opt.canvasRotation}°
+                  X: {opt.canvasX} | Y: {opt.canvasY} {isText ? `| Font Size: ${opt.canvasFontSize ?? 48}px` : (opt.canvasWidth ? `| W: ${opt.canvasWidth} H: ${opt.canvasHeight}` : "")} | Rotation: {opt.canvasRotation ?? 0}°
                 </div>
               );
             })()}

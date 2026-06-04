@@ -215,20 +215,19 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
     const isHovered = opt.id === hoveredOptionId;
 
     if (!livePreview && (isSelected || isHovered)) {
-      ctx.strokeStyle = isSelected ? "#008060" : "rgba(16, 185, 129, 0.6)";
-      ctx.lineWidth = isSelected ? 2 * scale : 1 * scale;
-      ctx.setLineDash(isSelected ? [4 * scale, 4 * scale] : [2 * scale, 2 * scale]);
+      ctx.strokeStyle = isSelected ? "#008060" : "rgba(0, 128, 96, 0.4)";
+      ctx.lineWidth = isSelected ? 1.5 * scale : 1 * scale;
       
       const margin = 6 * scale;
       ctx.strokeRect(-renderW / 2 - margin, -renderH / 2 - margin, renderW + margin * 2, renderH + margin * 2);
-      ctx.setLineDash([]);
 
       if (isSelected) {
         // Draw rotation line hook
         ctx.beginPath();
         ctx.moveTo(0, -renderH / 2 - margin);
-        ctx.lineTo(0, -renderH / 2 - 25 * scale);
+        ctx.lineTo(0, -renderH / 2 - 22 * scale);
         ctx.strokeStyle = "#008060";
+        ctx.lineWidth = 1.5 * scale;
         ctx.stroke();
 
         // Draw top rotation circle handle
@@ -236,12 +235,11 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
         ctx.strokeStyle = "#008060";
         ctx.lineWidth = 1.5 * scale;
         ctx.beginPath();
-        ctx.arc(0, -renderH / 2 - 25 * scale, 4 * scale, 0, 2 * Math.PI);
+        ctx.arc(0, -renderH / 2 - 22 * scale, 5 * scale, 0, 2 * Math.PI);
         ctx.fill();
         ctx.stroke();
 
-        // Draw four corner resize handle rectangles
-        const handleSize = 6 * scale;
+        // Draw four corner resize handle circles
         const corners = [
           { x: -renderW / 2 - margin, y: -renderH / 2 - margin },
           { x: renderW / 2 + margin, y: -renderH / 2 - margin },
@@ -252,8 +250,11 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
         corners.forEach(corner => {
           ctx.fillStyle = "#ffffff";
           ctx.strokeStyle = "#008060";
-          ctx.fillRect(corner.x - handleSize / 2, corner.y - handleSize / 2, handleSize, handleSize);
-          ctx.strokeRect(corner.x - handleSize / 2, corner.y - handleSize / 2, handleSize, handleSize);
+          ctx.lineWidth = 1.5 * scale;
+          ctx.beginPath();
+          ctx.arc(corner.x, corner.y, 5 * scale, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
         });
       }
     }
