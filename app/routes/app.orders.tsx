@@ -5,6 +5,28 @@ import db from "../db.server";
 import { useState, useEffect, Fragment } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
+interface CustomAttribute {
+  key: string;
+  value: string;
+}
+
+interface LineItemNode {
+  id: string;
+  title: string;
+  customAttributes: CustomAttribute[];
+}
+
+interface OrderNode {
+  id: string;
+  name: string;
+  createdAt: string;
+  lineItems?: {
+    edges?: {
+      node: LineItemNode;
+    }[];
+  };
+}
+
 // Loader: Fetch all SQLite order processing log entries
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -18,7 +40,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { logs };
 };
 
-// Action: Handle manual Shopify orders sync
+// Action: Handle manual Shopify orders sync, deletion, and bulk operations
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
@@ -56,7 +78,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
 
       const responseJson = await response.json();
-      const orders = responseJson.data?.orders?.edges?.map((e: any) => e.node) || [];
+      const orders = responseJson.data?.orders?.edges?.map((e: { node: OrderNode }) => e.node) || [];
       let syncedCount = 0;
 
       for (const order of orders) {
@@ -71,12 +93,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         // Check if order has personalized line items
         let isPersonalized = false;
-        const items = order.lineItems?.edges?.map((e: any) => e.node) || [];
+        const items = order.lineItems?.edges?.map((e: { node: LineItemNode }) => e.node) || [];
 
         for (const item of items) {
           const attributes = item.customAttributes || [];
-          const hasPreview = attributes.some((a: any) => a.key === "_preview_url");
-          const hasVisibleProps = attributes.some((a: any) => !a.key.startsWith("_") && a.key !== "priceUpcharge");
+          const hasPreview = attributes.some((a: CustomAttribute) => a.key === "_preview_url");
+          const hasVisibleProps = attributes.some((a: CustomAttribute) => !a.key.startsWith("_") && a.key !== "priceUpcharge");
           
           if (hasPreview || hasVisibleProps) {
             isPersonalized = true;
@@ -85,13 +107,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
 
         if (isPersonalized) {
-          // Register the order as PENDING status
-          // The background create webhook or manual compiling will process the SVG print files
+          // Register the order as COMPLETED status to let merchant download instantly
           await db.orderProcessingLog.create({
             data: {
               shop,
               orderId: orderIdNumber,
-              status: "COMPLETED", // Sync registers it as COMPLETED to let merchant download instantly
+              status: "COMPLETED",
               printFileUrl: ""
             }
           });
@@ -99,9 +120,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }
 
-      return { success: true, syncedCount };
-    } catch (e: any) {
-      return { error: e.message || "Failed to sync orders" };
+      return { success: true, intent, syncedCount };
+    } catch (e: unknown) {
+      return { error: (e as Error).message || "Failed to sync orders" };
+    }
+  }
+
+  if (intent === "delete_order") {
+    const logId = formData.get("logId") as string;
+    try {
+      await db.orderProcessingLog.delete({
+        where: { id: logId, shop }
+      });
+      return { success: true, intent, deletedId: logId };
+    } catch (e: unknown) {
+      return { error: (e as Error).message || "Failed to delete order log entry" };
+    }
+  }
+
+  if (intent === "bulk_delete") {
+    const logIds = JSON.parse(formData.get("logIds") as string) as string[];
+    try {
+      const deleteResult = await db.orderProcessingLog.deleteMany({
+        where: {
+          id: { in: logIds },
+          shop
+        }
+      });
+      return { success: true, intent, count: deleteResult.count };
+    } catch (e: unknown) {
+      return { error: (e as Error).message || "Failed to delete selected order logs" };
     }
   }
 
@@ -110,253 +158,922 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export default function OrdersDashboard() {
   const { logs } = useLoaderData<typeof loader>();
-  const fetcher = useFetcher<any>();
+  const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
   const [syncing, setSyncing] = useState(false);
   const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "pending" | "failed">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Selection states
+  const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (fetcher.data?.success) {
       setSyncing(false);
-      shopify.toast.show(`Sync complete! Registered ${fetcher.data.syncedCount} new personalized orders.`);
+      if (fetcher.data.intent === "sync_orders") {
+        shopify.toast.show(`Sync complete! Registered ${fetcher.data.syncedCount} new personalized orders.`);
+      } else if (fetcher.data.intent === "delete_order") {
+        shopify.toast.show("Order log entry deleted.");
+      } else if (fetcher.data.intent === "bulk_delete") {
+        shopify.toast.show(`Successfully deleted ${fetcher.data.count} order logs.`);
+      }
     } else if (fetcher.data?.error) {
       setSyncing(false);
-      shopify.toast.show(`Sync error: ${fetcher.data.error}`);
+      shopify.toast.show(`Error: ${fetcher.data.error}`);
     }
   }, [fetcher.data, shopify]);
+
+  // Reset page and selection when filter changes
+  useEffect(() => {
+    setSelectedLogIds([]);
+    setCurrentPage(1);
+  }, [filterStatus, searchQuery, startDate, endDate]);
 
   const handleSyncOrders = () => {
     setSyncing(true);
     fetcher.submit({ intent: "sync_orders" }, { method: "POST" });
   };
 
+  const handleDeleteRow = (logId: string) => {
+    if (confirm("Are you sure you want to delete this order log?")) {
+      fetcher.submit({ intent: "delete_order", logId }, { method: "POST" });
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (confirm(`Are you sure you want to delete the ${selectedLogIds.length} selected order logs?`)) {
+      fetcher.submit(
+        { intent: "bulk_delete", logIds: JSON.stringify(selectedLogIds) },
+        { method: "POST" }
+      );
+    }
+  };
+
+  const handleBulkDownload = () => {
+    selectedLogIds.forEach((logId, index) => {
+      const log = logs.find(l => l.id === logId);
+      if (log) {
+        setTimeout(() => {
+          const downloadUrl = `/apps/personalizer/download?orderId=${log.orderId}`;
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = "";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }, index * 400); // 400ms delay to bypass browser popup limits
+      }
+    });
+  };
+
+  const handleSelectRow = (id: string) => {
+    setSelectedLogIds(prev =>
+      prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = (visibleLogs: typeof logs) => {
+    const visibleIds = visibleLogs.map(l => l.id);
+    const allSelected = visibleIds.every(id => selectedLogIds.includes(id));
+    
+    if (allSelected) {
+      setSelectedLogIds(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedLogIds(prev => {
+        const next = [...prev];
+        visibleIds.forEach(id => {
+          if (!next.includes(id)) next.push(id);
+        });
+        return next;
+      });
+    }
+  };
+
+  // Filter logs logic
   const filteredLogs = logs.filter(log => {
     const matchesStatus = filterStatus === "all" || log.status.toLowerCase() === filterStatus;
     const matchesSearch = log.orderId.includes(searchQuery) || (log.error && log.error.includes(searchQuery));
-    return matchesStatus && matchesSearch;
+    
+    let matchesDate = true;
+    if (startDate) {
+      const start = new Date(startDate);
+      start.setHours(0, 0, 0, 0);
+      matchesDate = matchesDate && new Date(log.createdAt) >= start;
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      matchesDate = matchesDate && new Date(log.createdAt) <= end;
+    }
+    
+    return matchesStatus && matchesSearch && matchesDate;
   });
+
+  // Pagination logs slice
+  const totalPages = Math.ceil(filteredLogs.length / pageSize);
+  const paginatedLogs = filteredLogs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <s-page heading="Orders Customization Portal">
+      <style>{`
+        .orders-dashboard-wrapper {
+          font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+          color: #202223;
+        }
+        
+        /* Tab Filter Bar */
+        .orders-tabs {
+          display: flex;
+          gap: 4px;
+          border-bottom: 1px solid #e1e3e5;
+          margin-bottom: 20px;
+          padding-bottom: 4px;
+        }
+        .tab-btn {
+          background: none;
+          border: none;
+          padding: 8px 16px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #6d7175;
+          cursor: pointer;
+          border-radius: 6px 6px 0 0;
+          transition: all 0.15s ease;
+          position: relative;
+        }
+        .tab-btn:hover {
+          background: #f1f2f4;
+          color: #202223;
+        }
+        .tab-btn.active {
+          color: #008060;
+          font-weight: 600;
+        }
+        .tab-btn.active::after {
+          content: "";
+          position: absolute;
+          bottom: -5px;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: #008060;
+          border-radius: 3px 3px 0 0;
+        }
+
+        /* Filter Controls */
+        .toolbar-wrapper {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 16px;
+          flex-wrap: wrap;
+        }
+        .filter-tools {
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .search-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+        .search-icon {
+          position: absolute;
+          left: 10px;
+          color: #8c9196;
+        }
+        .orders-input {
+          padding: 8px 12px;
+          border: 1px solid #babfc3;
+          border-radius: 8px;
+          font-size: 13px;
+          background: #ffffff;
+          color: #202223;
+          box-sizing: border-box;
+          transition: border-color 0.15s ease;
+        }
+        .orders-input:focus {
+          border-color: #008060;
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.08);
+        }
+        .search-input {
+          padding-left: 32px;
+          width: 220px;
+        }
+        .date-picker-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #6d7175;
+        }
+        .sync-btn {
+          background: #008060;
+          color: #ffffff;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 13px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          transition: background 0.15s;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .sync-btn:hover:not(:disabled) {
+          background: #006e52;
+        }
+        .sync-btn:disabled {
+          background: #f1f2f4;
+          color: #8c9196;
+          cursor: not-allowed;
+          border: 1px solid #e1e3e5;
+          box-shadow: none;
+        }
+
+        /* Bulk Action Bar */
+        .bulk-actions-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          background: #002e25;
+          color: #ffffff;
+          padding: 10px 16px;
+          border-radius: 8px;
+          margin-bottom: 16px;
+          animation: slideDown 0.2s ease-out;
+        }
+        .bulk-selection-count {
+          font-weight: 600;
+          font-size: 13px;
+        }
+        .bulk-actions-buttons {
+          display: flex;
+          gap: 8px;
+        }
+        .bulk-btn {
+          border: none;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 12px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.15s;
+        }
+        .bulk-download-btn {
+          background: #008060;
+          color: #ffffff;
+        }
+        .bulk-download-btn:hover {
+          background: #006e52;
+        }
+        .bulk-delete-btn {
+          background: #c5221f;
+          color: #ffffff;
+        }
+        .bulk-delete-btn:hover {
+          background: #a51d1a;
+        }
+
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Table Card */
+        .table-card {
+          background: #ffffff;
+          border: 1px solid #e1e3e5;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+        .orders-table {
+          width: 100%;
+          border-collapse: collapse;
+          text-align: left;
+          font-size: 13px;
+        }
+        .orders-table th {
+          padding: 10px 16px;
+          font-weight: 600;
+          color: #202223;
+          background: #f9fafb;
+          border-bottom: 1px solid #e1e3e5;
+          user-select: none;
+        }
+        .orders-table td {
+          padding: 12px 16px;
+          border-bottom: 1px solid #e1e3e5;
+          color: #202223;
+        }
+        .orders-table tbody tr {
+          transition: background 0.15s;
+        }
+        .orders-table tbody tr:not(.expanded-row):hover {
+          background: #f9fafb;
+          cursor: pointer;
+        }
+        .orders-table tbody tr.expanded {
+          background: #f4f6f8;
+        }
+        .checkbox-cell {
+          width: 24px;
+          padding-right: 0 !important;
+          text-align: center;
+        }
+        .checkbox-input {
+          cursor: pointer;
+          width: 16px;
+          height: 16px;
+          border-radius: 4px;
+          border: 1px solid #babfc3;
+        }
+
+        /* Status Badges */
+        .status-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: capitalize;
+        }
+        .badge-completed {
+          background: #e6f4ea;
+          color: #137333;
+        }
+        .badge-pending {
+          background: #fef7e0;
+          color: #b06000;
+        }
+        .badge-failed {
+          background: #fce8e6;
+          color: #c5221f;
+        }
+
+        /* Action Buttons */
+        .action-link {
+          color: #008060;
+          font-weight: 600;
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .action-link:hover {
+          text-decoration: underline;
+        }
+        .zip-download-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          background: #2c3e50;
+          color: #fff;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          text-decoration: none;
+          border: none;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        .zip-download-btn:hover {
+          background: #1a252f;
+        }
+        .row-delete-btn {
+          background: none;
+          border: none;
+          color: #c5221f;
+          cursor: pointer;
+          padding: 4px;
+          border-radius: 4px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s;
+        }
+        .row-delete-btn:hover {
+          background: #fce8e6;
+        }
+
+        /* Expander Coordinates Panel */
+        .expanded-details-wrapper {
+          background: #ffffff;
+          border: 1px solid #e1e3e5;
+          border-radius: 8px;
+          padding: 16px;
+          box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .details-title {
+          margin: 0 0 12px 0;
+          font-size: 13px;
+          font-weight: 700;
+          color: #1a1a1a;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .details-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+        }
+        .details-section-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #6d7175;
+          display: block;
+          margin-bottom: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .details-table {
+          width: 100%;
+          font-size: 12px;
+          border-collapse: collapse;
+        }
+        .details-table td {
+          padding: 6px 0;
+          border-bottom: none;
+          color: #202223;
+        }
+        .details-table td.label-col {
+          color: #6d7175;
+          width: 150px;
+        }
+        .details-table td.val-col {
+          font-weight: 600;
+        }
+        .offset-font {
+          font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+        }
+
+        /* Empty state */
+        .empty-state-card {
+          padding: 48px;
+          border: 1px dashed #babfc3;
+          border-radius: 8px;
+          text-align: center;
+          background: #fafbfb;
+          color: #6d7175;
+        }
+        .empty-state-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: #202223;
+          margin-bottom: 4px;
+        }
+
+        /* Pagination & Footer */
+        .footer-wrapper {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-top: 20px;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .page-size-selector {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #6d7175;
+        }
+        .pagination-controls {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .page-indicator {
+          font-size: 13px;
+          color: #202223;
+        }
+        .pagination-arrow {
+          background: #ffffff;
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          width: 32px;
+          height: 32px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          color: #202223;
+          transition: all 0.15s;
+        }
+        .pagination-arrow:hover:not(:disabled) {
+          background: #f6f6f7;
+        }
+        .pagination-arrow:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+          border-color: #e1e3e5;
+          color: #8c9196;
+        }
+        .help-links {
+          display: flex;
+          gap: 16px;
+        }
+        .help-link {
+          color: #008060;
+          text-decoration: none;
+          font-size: 13px;
+          font-weight: 500;
+        }
+        .help-link:hover {
+          text-decoration: underline;
+        }
+      `}</style>
+
       <s-section heading="Personalized Orders Fulfillment Command Center">
         <s-paragraph>
           Track buyer customizations and sync manufacturing files. Select an order to review detailed coordinates or bulk-download full **Fulfillment Packages** as compressed ZIP files to route directly to laser engravers or screenprint shops.
         </s-paragraph>
 
-        {/* Filters and Sync Controls */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "20px 0", flexWrap: "wrap", gap: "12px" }}>
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <span style={{ fontSize: "14px", fontWeight: 600 }}>Filter by:</span>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as any)}
-              style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+        <div className="orders-dashboard-wrapper">
+          {/* Quick Filter Horizontal Tabs */}
+          <div className="orders-tabs">
+            <button
+              type="button"
+              className={`tab-btn ${filterStatus === "all" ? "active" : ""}`}
+              onClick={() => setFilterStatus("all")}
             >
-              <option value="all">All Orders</option>
-              <option value="completed">🟢 Completed</option>
-              <option value="pending">🟡 Pending Processing</option>
-              <option value="failed">🔴 Failed Rendering</option>
-            </select>
-
-            <input
-              type="text"
-              placeholder="Search by Order ID..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ padding: "6px 12px", borderRadius: "6px", border: "1px solid #babfc3", width: "180px" }}
-            />
+              All Orders ({logs.length})
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${filterStatus === "completed" ? "active" : ""}`}
+              onClick={() => setFilterStatus("completed")}
+            >
+              🟢 Completed ({logs.filter(l => l.status.toLowerCase() === "completed").length})
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${filterStatus === "pending" ? "active" : ""}`}
+              onClick={() => setFilterStatus("pending")}
+            >
+              🟡 Pending ({logs.filter(l => l.status.toLowerCase() === "pending").length})
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${filterStatus === "failed" ? "active" : ""}`}
+              onClick={() => setFilterStatus("failed")}
+            >
+              🔴 Failed ({logs.filter(l => l.status.toLowerCase() === "failed").length})
+            </button>
           </div>
 
-          <button
-            onClick={handleSyncOrders}
-            disabled={syncing}
-            style={{
-              padding: "8px 16px",
-              background: "#008060",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              fontWeight: 600,
-              cursor: "pointer",
-              fontSize: "14px"
-            }}
-          >
-            {syncing ? "🔄 Syncing Shopify Orders..." : "🔄 Sync Recent Orders"}
-          </button>
-        </div>
+          {/* Search, Date Range, & Sync Toolbar */}
+          <div className="toolbar-wrapper">
+            <div className="filter-tools">
+              <div className="search-wrapper">
+                <span className="search-icon">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search by Order ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="orders-input search-input"
+                />
+              </div>
 
-        {/* Orders Log Table */}
-        {filteredLogs.length === 0 ? (
-          <div style={{ padding: "40px", border: "1px dashed #babfc3", borderRadius: "8px", textAlign: "center", color: "#6d7175" }}>
-            No personalized orders match the current filters. Click &quot;Sync Recent Orders&quot; to query Shopify order queues.
+              <div className="date-picker-wrapper">
+                <span>From:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="orders-input"
+                />
+                <span>To:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="orders-input"
+                />
+                {(startDate || endDate) && (
+                  <button
+                    type="button"
+                    onClick={() => { setStartDate(""); setEndDate(""); }}
+                    style={{ background: "none", border: "none", color: "#c5221f", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
+                  >
+                    Clear Dates
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSyncOrders}
+              disabled={syncing}
+              className="sync-btn"
+            >
+              {syncing ? (
+                <>🔄 Syncing Shopify Orders...</>
+              ) : (
+                <>🔄 Sync Recent Orders</>
+              )}
+            </button>
           </div>
-        ) : (
-          <div style={{ overflowX: "auto", border: "1px solid #e1e3e5", borderRadius: "8px", background: "#fff" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "14px" }}>
-              <thead>
-                <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e1e3e5" }}>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Order ID</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Sync Time</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Fulfillment Status</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Manufacturing File</th>
-                  <th style={{ padding: "12px 16px", fontWeight: 600 }}>Fulfillment ZIP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.map(log => {
-                  const isCompleted = log.status === "COMPLETED";
-                  const isFailed = log.status === "FAILED";
-                  const isExpanded = expandedLogId === log.id;
-                  
-                  return (
-                    <Fragment key={log.id}>
-                      <tr 
-                        style={{ borderBottom: "1px solid #e1e3e5", transition: "background 0.2s", cursor: "pointer", background: isExpanded ? "#f4f6f8" : "#fff" }} 
-                        onMouseEnter={(e) => { if (!isExpanded) e.currentTarget.style.background = "#f9fafb"; }} 
-                        onMouseLeave={(e) => { if (!isExpanded) e.currentTarget.style.background = "#fff"; }}
-                        onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
-                      >
-                        <td style={{ padding: "12px 16px", fontWeight: 600, color: "#2c6ecb" }}>
-                          #{log.orderId}
-                        </td>
-                        <td style={{ padding: "12px 16px", color: "#6d7175" }}>
-                          {new Date(log.createdAt).toLocaleString()}
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <span style={{
-                            padding: "4px 8px",
-                            borderRadius: "12px",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            background: isCompleted ? "#e6f4ea" : isFailed ? "#fce8e6" : "#fef7e0",
-                            color: isCompleted ? "#137333" : isFailed ? "#c5221f" : "#b06000"
-                          }}>
-                            {log.status}
-                          </span>
-                          {log.error && (
-                            <div style={{ fontSize: "11px", color: "#c5221f", marginTop: "4px" }}>
-                              ⚠️ {log.error}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          {log.printFileUrl ? (
-                            <a href={log.printFileUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} style={{ color: "#008060", fontWeight: 600, textDecoration: "none" }}>
-                              📄 View SVG Layout
-                            </a>
-                          ) : (
-                            <span style={{ color: "#6d7175", fontStyle: "italic" }}>
-                              {isCompleted ? "Generic SVG Cached" : "Compiling..."}
+
+          {/* Bulk Selection Actions Bar */}
+          {selectedLogIds.length > 0 && (
+            <div className="bulk-actions-bar">
+              <span className="bulk-selection-count">
+                {selectedLogIds.length} customized orders selected
+              </span>
+              <div className="bulk-actions-buttons">
+                <button
+                  type="button"
+                  onClick={handleBulkDownload}
+                  className="bulk-btn bulk-download-btn"
+                >
+                  📦 Download Selected ZIPs
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDelete}
+                  className="bulk-btn bulk-delete-btn"
+                >
+                  🗑️ Delete selected logs
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Orders Log Table card */}
+          {filteredLogs.length === 0 ? (
+            <div className="empty-state-card">
+              <div className="empty-state-title">No Recent Orders Found</div>
+              <div>
+                There are currently no customized orders that match your filter parameters.
+                Click &quot;Sync Recent Orders&quot; to fetch recent sales from your store database.
+              </div>
+            </div>
+          ) : (
+            <div className="table-card">
+              <table className="orders-table">
+                <thead>
+                  <tr>
+                    <th className="checkbox-cell">
+                      <input
+                        type="checkbox"
+                        checked={paginatedLogs.length > 0 && paginatedLogs.every(l => selectedLogIds.includes(l.id))}
+                        onChange={() => handleSelectAll(paginatedLogs)}
+                        className="checkbox-input"
+                      />
+                    </th>
+                    <th>Order ID</th>
+                    <th>Sync Time</th>
+                    <th>Fulfillment Status</th>
+                    <th>Manufacturing File</th>
+                    <th>Fulfillment ZIP</th>
+                    <th style={{ width: "60px", textAlign: "right" }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedLogs.map(log => {
+                    const isCompleted = log.status === "COMPLETED";
+                    const isFailed = log.status === "FAILED";
+                    const isExpanded = expandedLogId === log.id;
+                    const isChecked = selectedLogIds.includes(log.id);
+
+                    return (
+                      <Fragment key={log.id}>
+                        <tr
+                          className={isExpanded ? "expanded" : ""}
+                          onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                        >
+                          <td className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleSelectRow(log.id)}
+                              className="checkbox-input"
+                            />
+                          </td>
+                          <td style={{ fontWeight: 600, color: "#2c6ecb" }}>
+                            #{log.orderId}
+                          </td>
+                          <td style={{ color: "#6d7175" }}>
+                            {new Date(log.createdAt).toLocaleString()}
+                          </td>
+                          <td>
+                            <span className={`status-badge ${
+                              isCompleted ? "badge-completed" : isFailed ? "badge-failed" : "badge-pending"
+                            }`}>
+                              {log.status.toLowerCase()}
                             </span>
-                          )}
-                        </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <a
-                            href={`/apps/personalizer/download?orderId=${log.orderId}`}
-                            download
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              padding: "6px 12px",
-                              background: "#2c3e50",
-                              color: "#fff",
-                              borderRadius: "6px",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              textDecoration: "none",
-                              cursor: "pointer"
-                            }}
-                          >
-                            📦 Download ZIP
-                          </a>
-                        </td>
-                      </tr>
-                      {isExpanded && (
-                        <tr style={{ background: "#fdfdfd" }}>
-                          <td colSpan={5} style={{ padding: "16px 24px", borderBottom: "1px solid #e1e3e5" }}>
-                            <div style={{
-                              background: "#ffffff",
-                              border: "1px solid #e1e3e5",
-                              borderRadius: "8px",
-                              padding: "16px",
-                              boxShadow: "0 2px 8px rgba(0,0,0,0.02)"
-                            }}>
-                              <h4 style={{ margin: "0 0 12px 0", fontSize: "13px", fontWeight: 700, color: "#1a1a1a" }}>
-                                📋 Personalization Manufacturing Coordinates Log
-                              </h4>
-                              
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-                                <div>
-                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#6d7175", display: "block", marginBottom: "8px", textTransform: "uppercase" }}>Registered Options Attributes:</span>
-                                  <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse" }}>
-                                    <tbody>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Product Type:</td>
-                                        <td style={{ padding: "4px 0", fontWeight: 600 }}>Custom Personalized Chronograph</td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Custom Text:</td>
-                                        <td style={{ padding: "4px 0", fontWeight: 600 }}>&quot;H.N.&quot;</td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Selected Typography:</td>
-                                        <td style={{ padding: "4px 0", fontWeight: 600 }}>Cursive Elegant (TTF)</td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Selected Color Hex:</td>
-                                        <td style={{ padding: "4px 0", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                                          <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#3E2723", border: "1px solid #d2d5d8" }} />
-                                          #3E2723 (Dark Brown)
-                                        </td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Upcharge Added:</td>
-                                        <td style={{ padding: "4px 0", fontWeight: 600, color: "#008060" }}>+$5.00</td>
-                                      </tr>
-                                    </tbody>
-                                  </table>
-                                </div>
-                                
-                                <div>
-                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#6d7175", display: "block", marginBottom: "8px", textTransform: "uppercase" }}>Visual Positioning Offsets:</span>
-                                  <table style={{ width: "100%", fontSize: "12px", borderCollapse: "collapse" }}>
-                                    <tbody>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>X Coordinate Offset:</td>
-                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>400 px</td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Y Coordinate Offset:</td>
-                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>380 px</td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Scale Factor Dimension:</td>
-                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>200 W x 100 H</td>
-                                      </tr>
-                                      <tr>
-                                        <td style={{ padding: "4px 0", color: "#6d7175" }}>Rotation Angle Degrees:</td>
-                                        <td style={{ padding: "4px 0", fontFamily: "monospace" }}>0°</td>
-                                      </tr>
-                                    </tbody>
-                                  </table>
-                                </div>
+                            {log.error && (
+                              <div style={{ fontSize: "11px", color: "#c5221f", marginTop: "4px" }}>
+                                ⚠️ {log.error}
                               </div>
-                            </div>
+                            )}
+                          </td>
+                          <td>
+                            {log.printFileUrl ? (
+                              <a
+                                href={log.printFileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="action-link"
+                              >
+                                📄 View SVG Layout
+                              </a>
+                            ) : (
+                              <span style={{ color: "#6d7175", fontStyle: "italic" }}>
+                                {isCompleted ? "Generic SVG Cached" : "Compiling..."}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <a
+                              href={`/apps/personalizer/download?orderId=${log.orderId}`}
+                              download
+                              onClick={(e) => e.stopPropagation()}
+                              className="zip-download-btn"
+                            >
+                              📦 Download ZIP
+                            </a>
+                          </td>
+                          <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRow(log.id)}
+                              title="Delete Order Log"
+                              className="row-delete-btn"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              </svg>
+                            </button>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                        {isExpanded && (
+                          <tr className="expanded-row" style={{ background: "#fdfdfd" }}>
+                            <td colSpan={7} style={{ padding: "16px 24px", borderBottom: "1px solid #e1e3e5" }}>
+                              <div className="expanded-details-wrapper">
+                                <h4 className="details-title">
+                                  📋 Personalization Manufacturing Coordinates Log
+                                </h4>
+                                
+                                <div className="details-grid">
+                                  <div>
+                                    <span className="details-section-label">Registered Options Attributes:</span>
+                                    <table className="details-table">
+                                      <tbody>
+                                        <tr>
+                                          <td className="label-col">Product Type:</td>
+                                          <td className="val-col">Custom Personalized Chronograph</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Custom Text:</td>
+                                          <td className="val-col">&quot;H.N.&quot;</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Selected Typography:</td>
+                                          <td className="val-col">Cursive Elegant (TTF)</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Selected Color Hex:</td>
+                                          <td className="val-col" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#3E2723", border: "1px solid #d2d5d8" }} />
+                                            #3E2723 (Dark Brown)
+                                          </td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Upcharge Added:</td>
+                                          <td className="val-col" style={{ color: "#008060" }}>+$5.00</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                  
+                                  <div>
+                                    <span className="details-section-label">Visual Positioning Offsets:</span>
+                                    <table className="details-table">
+                                      <tbody>
+                                        <tr>
+                                          <td className="label-col">X Coordinate Offset:</td>
+                                          <td className="val-col offset-font">400 px</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Y Coordinate Offset:</td>
+                                          <td className="val-col offset-font">380 px</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Scale Factor Dimension:</td>
+                                          <td className="val-col offset-font">200 W x 100 H</td>
+                                        </tr>
+                                        <tr>
+                                          <td className="label-col">Rotation Angle Degrees:</td>
+                                          <td className="val-col offset-font">0°</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Footer Controls & Pagination */}
+          {filteredLogs.length > 0 && (
+            <div className="footer-wrapper">
+              <div className="page-size-selector">
+                <span>Show:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(parseInt(e.target.value)); setCurrentPage(1); }}
+                  className="orders-input"
+                  style={{ padding: "6px 8px" }}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={15}>15</option>
+                  <option value={20}>20</option>
+                  <option value={30}>30</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span>
+                  Showing {Math.min(filteredLogs.length, (currentPage - 1) * pageSize + 1)} - {Math.min(filteredLogs.length, currentPage * pageSize)} of {filteredLogs.length} results
+                </span>
+              </div>
+
+              <div className="pagination-controls">
+                <button
+                  type="button"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className="pagination-arrow"
+                  title="Previous Page"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
+                </button>
+                <span className="page-indicator">
+                  Page {currentPage} of {totalPages || 1}
+                </span>
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  className="pagination-arrow"
+                  title="Next Page"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+
+              <div className="help-links">
+                <a href="#docs" className="help-link"> Documentation</a>
+                <a href="#contact" className="help-link"> Contact Us</a>
+              </div>
+            </div>
+          )}
+        </div>
       </s-section>
     </s-page>
   );
