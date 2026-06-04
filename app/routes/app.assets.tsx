@@ -2,6 +2,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { ShopifyFilePublisher } from "../utils/shopifyFilePublisher";
 import { useState, useEffect } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
@@ -32,48 +33,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const fileSize = formData.get("fileSize") as string;
 
     try {
-      const response = await admin.graphql(
-        `#graphql
-        mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-          stagedUploadsCreate(input: $input) {
-            stagedTargets {
-              url
-              resourceUrl
-              parameters {
-                name
-                value
-              }
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }`,
-        {
-          variables: {
-            input: [
-              {
-                filename,
-                httpMethod: "POST",
-                mimeType,
-                resource: "FILE",
-                fileSize,
-              },
-            ],
-          },
-        }
-      );
-
-      const responseJson = await response.json();
-      const target = responseJson.data?.stagedUploadsCreate?.stagedTargets?.[0];
-      const errors = responseJson.data?.stagedUploadsCreate?.userErrors || [];
-
-      if (errors.length > 0) {
-        return { error: errors[0].message };
-      }
-
-      return { success: true, target };
+      const publisher = new ShopifyFilePublisher();
+      const target = await publisher.stage(admin, filename, Number(fileSize), mimeType);
+      
+      return { 
+        success: true, 
+        target: { 
+          url: target.uploadUrl, 
+          resourceUrl: target.resourceUrl, 
+          parameters: target.parameters 
+        } 
+      };
     } catch (e: any) {
       return { error: e.message || "Failed to create upload staging target" };
     }
@@ -84,67 +54,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const filename = formData.get("filename") as string;
 
     try {
-      const fileCreateResponse = await admin.graphql(
-        `#graphql
-        mutation fileCreate($files: [FileCreateInput!]!) {
-          fileCreate(files: $files) {
-            files {
-              id
-              fileStatus
-              ... on GenericFile {
-                url
-              }
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }`,
+      const publisher = new ShopifyFilePublisher();
+      const published = await publisher.publish(
+        admin,
         {
-          variables: {
-            files: [
-              {
-                originalSource: resourceUrl,
-                contentType: "FILE",
-                filename,
-              },
-            ],
-          },
+          stagedResourceUrl: resourceUrl,
+          filename,
         }
       );
 
-      const fileCreateJson = await fileCreateResponse.json();
-      const fileRecord = fileCreateJson.data?.fileCreate?.files?.[0];
-      const createErrors = fileCreateJson.data?.fileCreate?.userErrors || [];
-
-      if (createErrors.length > 0) {
-        return { error: createErrors[0].message };
-      }
-
-      // Proactively poll to resolve public CDN URL
-      let finalUrl = fileRecord?.url;
-      let pollCount = 0;
-
-      while (pollCount < 5 && !finalUrl && fileRecord?.id) {
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        const checkResponse = await admin.graphql(
-          `#graphql
-          query getFile($id: ID!) {
-            node(id: $id) {
-              ... on GenericFile {
-                url
-              }
-            }
-          }`,
-          { variables: { id: fileRecord.id } }
-        );
-        const checkJson = await checkResponse.json();
-        finalUrl = checkJson.data?.node?.url;
-        pollCount++;
-      }
-
-      return { success: true, url: finalUrl || resourceUrl };
+      return { success: true, url: published.publicUrl };
     } catch (e: any) {
       return { error: e.message || "File registry failed" };
     }

@@ -44,6 +44,10 @@ _Avoid_: Cart Sync, cart listener, item linkage
 The headless vector layout compiler module that processes a shopper's personalization choices against a Personalization Config to generate a self-contained vector SVG print file.
 _Avoid_: SVG generator, print layouter, layout builder
 
+**Shopify File Publisher**:
+The unified network adapter module that handles pre-staging, storage-bucket uploads, registry mutations, and public CDN URL resolution for app assets and customer customizations.
+_Avoid_: File uploader, image stages, asset poster
+
 
 
 
