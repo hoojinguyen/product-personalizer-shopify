@@ -804,25 +804,51 @@ export function WorkspaceEditor({
         .canvas-container {
           position: relative;
           background-color: var(--p-color-bg-surface, #ffffff);
-          border-radius: 12px;
-          box-shadow: var(--p-shadow-300, 0 4px 12px rgba(0,0,0,0.08));
+          border-radius: 16px;
+          box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.05);
           border: 1px solid var(--p-color-border-muted, #e1e3e5);
           padding: 16px;
         }
         .floating-toolbar {
           position: absolute;
-          top: 16px;
+          top: 20px;
           display: flex;
-          gap: 12px;
-          background-color: var(--p-color-bg-surface, #ffffff);
-          padding: 6px 12px;
-          border-radius: 24px;
-          box-shadow: var(--p-shadow-200, 0 2px 6px rgba(0,0,0,0.06));
-          border: 1px solid var(--p-color-border-muted, #e1e3e5);
+          gap: 16px;
+          background-color: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          padding: 8px 18px;
+          border-radius: 32px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 16px -6px rgba(0, 0, 0, 0.05), 0 0 0 1px rgba(0, 0, 0, 0.025);
+          border: 1px solid rgba(255, 255, 255, 0.6);
           z-index: 10;
           align-items: center;
           flex-wrap: nowrap;
           white-space: nowrap;
+          transition: all 0.2s ease;
+        }
+        .floating-toolbar:hover {
+          background-color: rgba(255, 255, 255, 0.95);
+          box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.08), 0 8px 20px -6px rgba(0, 0, 0, 0.08);
+          transform: translateY(-1px);
+        }
+        .hint-capsule {
+          background-color: var(--p-color-bg-surface, #ffffff);
+          border: 1px solid var(--p-color-border-muted, #e1e3e5);
+          padding: 6px 16px;
+          border-radius: 20px;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+          font-size: 13px;
+          color: var(--p-color-text-secondary, #6d7175);
+          transition: all 0.2s ease;
+        }
+        .hint-capsule:hover {
+          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+          border-color: #008060;
+          color: #202223;
         }
         .floating-toolbar > * {
           flex-shrink: 0;
@@ -1417,9 +1443,10 @@ export function WorkspaceEditor({
           </div>
 
           <div style={{ marginTop: "16px", textAlign: "center" }}>
-            <p style={{ fontSize: "13px", color: "var(--p-color-text-secondary)", margin: 0 }}>
-              💡 Drag layers to reposition, rotate using the top circular handle, and resize via corners!
-            </p>
+            <span className="hint-capsule">
+              <span>💡</span>
+              <span>Drag layers to reposition, rotate using the top circular handle, and resize via corners!</span>
+            </span>
           </div>
         </div>
 
