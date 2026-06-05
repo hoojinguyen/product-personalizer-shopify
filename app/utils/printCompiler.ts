@@ -42,6 +42,11 @@ export interface ShopifyClientAdapter {
    * Staged-uploads and registers the SVG file on Shopify's files library, polling until the CDN URL resolves.
    */
   publishPrintFile(content: string, filename: string): Promise<string>;
+
+  /**
+   * Updates the order's manufacturing files metafield with the given URLs.
+   */
+  updateOrderMetafield(orderId: string, publicUrls: string[]): Promise<void>;
 }
 
 export interface DatabaseAdapter {
@@ -54,6 +59,21 @@ export interface DatabaseAdapter {
    * Retrieves the raw option schema for a database-stored Template.
    */
   getTemplateOptions(templateId: string, shop: string): Promise<string | null>;
+
+  /**
+   * Creates an initial pending processing log.
+   */
+  createProcessingLog(shop: string, orderId: string): Promise<{ id: string }>;
+
+  /**
+   * Updates an existing processing log.
+   */
+  updateProcessingLog(
+    logId: string,
+    status: "PENDING" | "COMPLETED" | "FAILED",
+    printFileUrl?: string | null,
+    error?: string | null
+  ): Promise<void>;
 }
 
 export interface NetworkAdapter {
@@ -76,6 +96,10 @@ export interface PrismaClientSubset {
   template: {
     findFirst(args: { where: { id: string; shop: string } }): Promise<{ options: string } | null>;
   };
+  orderProcessingLog: {
+    create(args: { data: { shop: string; orderId: string; status: string } }): Promise<{ id: string }>;
+    update(args: { where: { id: string }; data: { status: string; printFileUrl?: string | null; error?: string | null } }): Promise<{ id: string }>;
+  };
 }
 
 export class PrismaDatabaseAdapter implements DatabaseAdapter {
@@ -93,6 +117,32 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
       where: { id: templateId, shop }
     });
     return template?.options || null;
+  }
+
+  async createProcessingLog(shop: string, orderId: string): Promise<{ id: string }> {
+    return this.prisma.orderProcessingLog.create({
+      data: {
+        shop,
+        orderId,
+        status: "PENDING",
+      },
+    });
+  }
+
+  async updateProcessingLog(
+    logId: string,
+    status: "PENDING" | "COMPLETED" | "FAILED",
+    printFileUrl?: string | null,
+    error?: string | null
+  ): Promise<void> {
+    await this.prisma.orderProcessingLog.update({
+      where: { id: logId },
+      data: {
+        status,
+        printFileUrl: printFileUrl || null,
+        error: error || null,
+      },
+    });
   }
 }
 
@@ -144,6 +194,49 @@ export class ShopifyAdminClientGraphQLAdapter implements ShopifyClientAdapter {
       }
     );
     return published.publicUrl;
+  }
+
+  async updateOrderMetafield(orderId: string, publicUrls: string[]): Promise<void> {
+    const orderGid = orderId.startsWith("gid://shopify/Order/") ? orderId : `gid://shopify/Order/${orderId}`;
+    const response = await this.adminClient.graphql(
+      `#graphql
+      mutation setOrderMetafield($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields {
+            id
+            value
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      {
+        variables: {
+          metafields: [
+            {
+              ownerId: orderGid,
+              namespace: "app",
+              key: "manufacturing_files",
+              type: "json",
+              value: JSON.stringify(publicUrls),
+            },
+          ],
+        },
+      }
+    );
+    const json = (await response.json()) as {
+      data?: {
+        metafieldsSet?: {
+          userErrors?: Array<{ field: string; message: string }>;
+        };
+      };
+    };
+    const errors = json.data?.metafieldsSet?.userErrors;
+    if (errors && errors.length > 0) {
+      throw new Error(`Failed to update order metafields: ${errors.map((e) => e.message).join(", ")}`);
+    }
   }
 }
 
@@ -328,5 +421,198 @@ export class PrintFileCompilerImpl {
       fileBytes,
       warnings
     };
+  }
+}
+
+export interface OrderPrintCompilerResult {
+  success: boolean;
+  orderId: string;
+  processedItemsCount: number;
+  warnings: string[];
+  publicUrls: string[];
+  error?: string;
+}
+
+export interface CompileOrderOptions {
+  shop: string;
+  orderId: string;
+  orderName?: string;
+  admin: ShopifyGraphQLClient;
+  db?: PrismaClientSubset;
+  network?: NetworkAdapter;
+}
+
+export class OrderPrintCompiler {
+  /**
+   * Compiles the manufacturing-ready vector SVG print files for all personalized items in the order.
+   */
+  static async compileOrder(options: CompileOrderOptions): Promise<OrderPrintCompilerResult> {
+    const dbModule = await import("../db.server");
+    const resolvedDb = options.db || dbModule.default;
+    const resolvedNetwork = options.network || new HttpNetworkAdapter();
+
+    const shopifyClient = new ShopifyAdminClientGraphQLAdapter(options.admin);
+    const database = new PrismaDatabaseAdapter(resolvedDb);
+    
+    // Initialize processing log entry
+    const logEntry = await database.createProcessingLog(options.shop, options.orderId);
+    
+    try {
+      const orderGid = options.orderId.startsWith("gid://shopify/Order/") 
+        ? options.orderId 
+        : `gid://shopify/Order/${options.orderId}`;
+
+      const orderQuery = `#graphql
+        query getOrderDetails($id: ID!) {
+          order(id: $id) {
+            name
+            lineItems(first: 50) {
+              nodes {
+                id
+                title
+                productId
+                variant {
+                  title
+                }
+                customAttributes {
+                  key
+                  value
+                }
+              }
+            }
+          }
+        }
+      `;
+      const response = await options.admin.graphql(orderQuery, { variables: { id: orderGid } });
+      const responseJson = (await response.json()) as {
+        data?: {
+          order?: {
+            name: string;
+            lineItems?: {
+              nodes?: Array<{
+                id: string;
+                title: string;
+                productId?: string | null;
+                variant?: {
+                  title: string;
+                } | null;
+                customAttributes?: Array<{ key: string; value: string | null }> | null;
+              }>;
+            };
+          };
+        };
+      };
+
+      const orderData = responseJson.data?.order;
+      if (!orderData) {
+        throw new Error(`Order ${orderGid} not found.`);
+      }
+
+      const orderName = orderData.name || options.orderName || `#${options.orderId}`;
+      const rawLineItems = orderData.lineItems?.nodes || [];
+
+      // Filter personalized line items
+      const personalizedItems = rawLineItems.filter((item) => {
+        return item.customAttributes && item.customAttributes.some((attr) => !attr.key.startsWith("_") && attr.key !== "priceUpcharge");
+      });
+
+      if (personalizedItems.length === 0) {
+        await database.updateProcessingLog(logEntry.id, "COMPLETED", null, "No personalized options found for this order.");
+        return {
+          success: true,
+          orderId: options.orderId,
+          processedItemsCount: 0,
+          warnings: [],
+          publicUrls: [],
+        };
+      }
+
+      const compiler = new PrintFileCompilerImpl();
+      const adapters = {
+        shopifyClient,
+        database,
+        network: resolvedNetwork,
+      };
+
+      const publicUrls: string[] = [];
+      const warnings: string[] = [];
+
+      for (const item of personalizedItems) {
+        const productIdRaw = item.productId || "";
+        const productId = productIdRaw.split("/").pop() || "";
+
+        const properties = item.customAttributes?.map((attr) => ({
+          name: attr.key,
+          value: attr.value,
+        })) || [];
+
+        const result = await compiler.compileAndPublish(
+          {
+            shop: options.shop,
+            orderId: options.orderId,
+            orderName: orderName,
+            lineItem: {
+              id: item.id.split("/").pop() || item.id,
+              product_id: productId,
+              title: item.title,
+              variant_title: item.variant?.title || null,
+              properties,
+            },
+          },
+          adapters
+        );
+
+        if (result.warnings.length > 0) {
+          warnings.push(...result.warnings);
+        }
+        publicUrls.push(result.publicUrl);
+      }
+
+      // Save public urls back to Shopify Order Metafields
+      await shopifyClient.updateOrderMetafield(options.orderId, publicUrls);
+
+      // Update log state
+      await database.updateProcessingLog(logEntry.id, "COMPLETED", publicUrls[0]);
+
+      return {
+        success: true,
+        orderId: options.orderId,
+        processedItemsCount: personalizedItems.length,
+        warnings,
+        publicUrls,
+      };
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : "Unknown compilation error";
+      await database.updateProcessingLog(logEntry.id, "FAILED", null, errorMsg);
+      return {
+        success: false,
+        orderId: options.orderId,
+        processedItemsCount: 0,
+        warnings: [],
+        publicUrls: [],
+        error: errorMsg,
+      };
+    }
+  }
+
+  /**
+   * Primary entry point for Shopify webhooks.
+   * Auto-resolves authentication, database instance, and Shopify client context from the Remix request.
+   */
+  static async processWebhook(request: Request): Promise<OrderPrintCompilerResult> {
+    const shopifyModule = await import("../shopify.server");
+    const { authenticate } = shopifyModule;
+    const { shop, admin, payload } = await authenticate.webhook(request);
+
+    if (!admin) {
+      throw new Error("Webhook Admin context is missing. Cannot process order details.");
+    }
+
+    return this.compileOrder({
+      shop,
+      orderId: String(payload.id),
+      orderName: payload.name ? `#${payload.name}` : undefined,
+      admin,
+    });
   }
 }
