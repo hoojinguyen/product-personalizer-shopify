@@ -40,17 +40,14 @@ _Avoid_: Upcharge Item, fee variant, stacked variant
 The automatic Shopify Function-driven merging of customizer choices and dynamic fees directly into the main checkout product without auxiliary items.
 _Avoid_: Cart Sync, cart listener, item linkage
 
-**Print File Compiler**:
-The headless vector layout compiler module that processes a shopper's personalization choices against a Personalization Config to generate a self-contained vector SVG print file.
-_Avoid_: SVG generator, print layouter, layout builder
+**Order Personalization Compiler**:
+The consolidated manufacturing compilation module that processes order personalization properties, compiles coordinate-perfect vector SVG print layouts, and aggregates them alongside customer asset uploads into streaming fulfillment packages.
+_Avoid_: Order compiler, personalization service, package zip builder
 
 **Shopify File Publisher**:
 The unified network adapter module that handles pre-staging, storage-bucket uploads, registry mutations, and public CDN URL resolution for app assets and customer customizations.
 _Avoid_: File uploader, image stages, asset poster
 
-**Fulfillment Package Packager**:
-The dynamic compilation module that aggregates order metadata, customer asset uploads, and print layouts, packaging them into a streaming ZIP archive for order fulfillment.
-_Avoid_: Zip packager, package zipper, zip compiler
 
 **Template Sync**:
 The synchronization module that persists template option schemas to the local database and propagates corresponding Personalization Config payloads downstream to linked storefront products.
