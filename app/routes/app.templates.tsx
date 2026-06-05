@@ -317,6 +317,27 @@ export default function TemplatesPanel() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
 
+  // Create Naming Modal status and form states
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateDesc, setNewTemplateDesc] = useState("");
+  const [newTemplateError, setNewTemplateError] = useState("");
+  const [selectedStyleCard, setSelectedStyleCard] = useState<"watch" | "neon" | "pillow" | "generic">("generic");
+
+  // Customizer Loading Skeleton Status
+  const [customizerLoading, setCustomizerLoading] = useState(false);
+
+  // Undo/Redo options history tracking states
+  const [optionHistory, setOptionHistory] = useState<CustomizationOption[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  const pushHistory = (newOptions: CustomizationOption[]) => {
+    const updatedHistory = optionHistory.slice(0, historyIndex + 1);
+    updatedHistory.push(JSON.parse(JSON.stringify(newOptions)));
+    setOptionHistory(updatedHistory);
+    setHistoryIndex(updatedHistory.length - 1);
+  };
+
   // Preview and Linker modal statuses
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
@@ -422,7 +443,11 @@ export default function TemplatesPanel() {
         setBrandColor(config.brandColor || "#008060");
         setButtonColor(config.buttonColor || "#008060");
         setButtonTextColor(config.buttonTextColor || "#ffffff");
-        setOptions(config.options || []);
+        
+        const loadedOptions = config.options || [];
+        setOptions(loadedOptions);
+        setOptionHistory([JSON.parse(JSON.stringify(loadedOptions))]);
+        setHistoryIndex(0);
         
         setViewName(config.viewName || "Main View");
         setViewBackground(config.viewBackground || "Blank Canvas");
@@ -481,7 +506,7 @@ export default function TemplatesPanel() {
       setHideBackground(false);
       setCustomCartLabel(false);
 
-      setOptions([
+      const defaultOptions: CustomizationOption[] = [
         {
           id: "opt-default-text",
           type: "text",
@@ -496,7 +521,10 @@ export default function TemplatesPanel() {
           canvasHeight: 150,
           canvasRotation: 0
         }
-      ]);
+      ];
+      setOptions(defaultOptions);
+      setOptionHistory([JSON.parse(JSON.stringify(defaultOptions))]);
+      setHistoryIndex(0);
       setLinkedProducts([]);
       setInitialLinkedProducts([]);
     }
@@ -561,6 +589,25 @@ export default function TemplatesPanel() {
       cx.lineWidth = 2;
       cx.strokeRect(20, 20, canvas.width - 40, canvas.height - 40);
 
+      // Draw dotted alignment grid
+      cx.save();
+      cx.strokeStyle = "rgba(0, 128, 96, 0.08)";
+      cx.lineWidth = 1;
+      cx.setLineDash([5, 5]);
+      for (let x = 100; x < canvas.width; x += 100) {
+        cx.beginPath();
+        cx.moveTo(x, 0);
+        cx.lineTo(x, canvas.height);
+        cx.stroke();
+      }
+      for (let y = 100; y < canvas.height; y += 100) {
+        cx.beginPath();
+        cx.moveTo(0, y);
+        cx.lineTo(canvas.width, y);
+        cx.stroke();
+      }
+      cx.restore();
+
       options.forEach(opt => {
         cx.save();
         
@@ -624,6 +671,27 @@ export default function TemplatesPanel() {
           cx.setLineDash([8, 8]);
           cx.strokeRect(-renderW/2 - 10, -renderH/2 - 10, renderW + 20, renderH + 20);
           cx.setLineDash([]);
+
+          // Draw Drag & Resize placement tooltip badge
+          cx.save();
+          cx.fillStyle = "#008060";
+          const tooltipW = 150;
+          const tooltipH = 26;
+          const tooltipX = -tooltipW / 2;
+          const tooltipY = -renderH / 2 - 45;
+          if (cx.roundRect) {
+            cx.beginPath();
+            cx.roundRect(tooltipX, tooltipY, tooltipW, tooltipH, 4);
+            cx.fill();
+          } else {
+            cx.fillRect(tooltipX, tooltipY, tooltipW, tooltipH);
+          }
+          cx.fillStyle = "#ffffff";
+          cx.font = "bold 11px sans-serif";
+          cx.textAlign = "center";
+          cx.textBaseline = "middle";
+          cx.fillText("Drag & Resize to Place", 0, tooltipY + tooltipH / 2);
+          cx.restore();
 
           // Resize handles
           cx.fillStyle = "#ffffff";
@@ -796,12 +864,15 @@ export default function TemplatesPanel() {
   };
 
   const handleCanvasMouseUp = () => {
+    if (dragState.isDragging || dragState.isResizing) {
+      pushHistory(options);
+    }
     setDragState(prev => ({ ...prev, isDragging: false, isResizing: false, resizeHandle: null }));
   };
 
   const handleAddOption = () => {
     const newId = `opt-${Date.now()}`;
-    setOptions([
+    const newOptions: CustomizationOption[] = [
       ...options,
       {
         id: newId,
@@ -817,17 +888,21 @@ export default function TemplatesPanel() {
         canvasHeight: 150,
         canvasRotation: 0
       }
-    ]);
+    ];
+    setOptions(newOptions);
     setSelectedOptionId(newId);
+    pushHistory(newOptions);
   };
 
   const handleRemoveOption = (id: string) => {
-    setOptions(options.filter(o => o.id !== id));
+    const newOptions = options.filter(o => o.id !== id);
+    setOptions(newOptions);
     if (selectedOptionId === id) setSelectedOptionId(null);
+    pushHistory(newOptions);
   };
 
   const handleUpdateOption = (id: string, updates: Partial<CustomizationOption>) => {
-    setOptions(options.map(o => {
+    const newOptions = options.map(o => {
       if (o.id === id) {
         const u = { ...o, ...updates };
         if (updates.type && updates.type !== o.type) {
@@ -850,7 +925,188 @@ export default function TemplatesPanel() {
         return u;
       }
       return o;
-    }));
+    });
+    setOptions(newOptions);
+  };
+
+  const handleUpdateOptionAndPush = (id: string, updates: Partial<CustomizationOption>) => {
+    const newOptions = options.map(o => {
+      if (o.id === id) {
+        const u = { ...o, ...updates };
+        if (updates.type && updates.type !== o.type) {
+          if (u.type === "text") {
+            u.maxChars = 30;
+            u.canvasX = 500;
+            u.canvasY = 500;
+            u.canvasFontSize = 80;
+          } else if (u.type === "select" || u.type === "swatch") {
+            u.choicesType = "custom";
+            u.choices = "Option X, Option Y";
+          } else if (u.type === "clipart" || u.type === "file") {
+            u.canvasX = 500;
+            u.canvasY = 500;
+            u.canvasWidth = 300;
+            u.canvasHeight = 300;
+            u.canvasRotation = 0;
+          }
+        }
+        return u;
+      }
+      return o;
+    });
+    setOptions(newOptions);
+    pushHistory(newOptions);
+  };
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      setHistoryIndex(prevIndex);
+      setOptions(JSON.parse(JSON.stringify(optionHistory[prevIndex])));
+      setSelectedOptionId(null);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < optionHistory.length - 1) {
+      const nextIndex = historyIndex + 1;
+      setHistoryIndex(nextIndex);
+      setOptions(JSON.parse(JSON.stringify(optionHistory[nextIndex])));
+      setSelectedOptionId(null);
+    }
+  };
+
+  const handleConfirmCreateTemplate = () => {
+    if (!newTemplateName.trim()) {
+      setNewTemplateError("Template name is required");
+      return;
+    }
+
+    setTemplateName(newTemplateName);
+    setTemplateDescription(newTemplateDesc);
+    
+    let activePreset: CustomizationOption[] = [];
+
+    if (selectedStyleCard === "watch") {
+      setHeading("Custom Watch Monogram & Dial Engraving");
+      setLayoutMode("tabs");
+      setCanvasW(1000);
+      setCanvasH(1000);
+      setViewBackground("Blank Canvas");
+      activePreset = [
+        {
+          id: "watch-face-text",
+          type: "text",
+          label: "Watch Dial Engraving Initials",
+          required: true,
+          priceUpcharge: 5.0,
+          maxChars: 4,
+          canvasX: 500,
+          canvasY: 480,
+          canvasFontSize: 50,
+          canvasWidth: 400,
+          canvasHeight: 150,
+          canvasRotation: 0
+        },
+        {
+          id: "watch-band-color",
+          type: "swatch",
+          label: "Leather Strap Color",
+          required: true,
+          priceUpcharge: 0,
+          choices: "#000000, #3E2723, #1A237E"
+        }
+      ];
+    } else if (selectedStyleCard === "neon") {
+      setHeading("Build Your Custom Neon Glow Sign");
+      setLayoutMode("stacked");
+      setCanvasW(1000);
+      setCanvasH(1000);
+      setViewBackground("Blank Canvas");
+      activePreset = [
+        {
+          id: "neon-glow-text",
+          type: "text",
+          label: "Neon Text Content",
+          required: true,
+          priceUpcharge: 10.0,
+          maxChars: 15,
+          canvasX: 500,
+          canvasY: 500,
+          canvasFontSize: 80,
+          canvasWidth: 700,
+          canvasHeight: 300,
+          canvasRotation: 0
+        },
+        {
+          id: "neon-glow-color",
+          type: "swatch",
+          label: "Glow Color Swatch",
+          required: true,
+          priceUpcharge: 0,
+          choices: "#FF007F, #00FFFF, #39FF14, #FFD700"
+        }
+      ];
+    } else if (selectedStyleCard === "pillow") {
+      setHeading("Custom Monogram Pillow");
+      setLayoutMode("stacked");
+      setCanvasW(1000);
+      setCanvasH(1000);
+      setViewBackground("Blank Canvas");
+      activePreset = [
+        {
+          id: "pillow-monogram-initials",
+          type: "text",
+          label: "Monogram Initials (3 letters)",
+          required: true,
+          priceUpcharge: 3.5,
+          maxChars: 3,
+          canvasX: 500,
+          canvasY: 500,
+          canvasFontSize: 120,
+          canvasWidth: 400,
+          canvasHeight: 400,
+          canvasRotation: 0
+        }
+      ];
+    } else {
+      setHeading("Personalize Your Item");
+      setLayoutMode("stacked");
+      setCanvasW(1000);
+      setCanvasH(1000);
+      setViewBackground("Blank Canvas");
+      activePreset = [
+        {
+          id: "opt-default-text",
+          type: "text",
+          label: "Engraving Custom Text",
+          required: true,
+          priceUpcharge: 0,
+          maxChars: 30,
+          canvasX: 500,
+          canvasY: 500,
+          canvasFontSize: 80,
+          canvasWidth: 500,
+          canvasHeight: 150,
+          canvasRotation: 0
+        }
+      ];
+    }
+
+    setOptions(activePreset);
+    setOptionHistory([JSON.parse(JSON.stringify(activePreset))]);
+    setHistoryIndex(0);
+
+    setLinkedProducts([]);
+    setInitialLinkedProducts([]);
+    setSelectedTemplate(null);
+    setIsCreateModalOpen(false);
+
+    setIsModalOpen(true);
+    setCustomizerLoading(true);
+    setTimeout(() => {
+      setCustomizerLoading(false);
+    }, 800);
   };
 
   const handleSaveTemplate = () => {
@@ -1562,6 +1818,22 @@ export default function TemplatesPanel() {
           color: #0288d1;
           border-color: #b3e5fc;
         }
+
+        /* Skeleton pulse animation */
+        .skeleton-pulse {
+          background: linear-gradient(90deg, #f2f2f2 25%, #e6e6e6 50%, #f2f2f2 75%);
+          background-size: 200% 100%;
+          animation: skeleton-loading 1.5s infinite ease-in-out;
+        }
+
+        @keyframes skeleton-loading {
+          0% {
+            background-position: 200% 0;
+          }
+          100% {
+            background-position: -200% 0;
+          }
+        }
       `}</style>
 
       {/* 🔴 TEMPLATES LIST VIEW */}
@@ -1572,8 +1844,11 @@ export default function TemplatesPanel() {
           <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1a1a1a" }}>Templates</h1>
           <button
             onClick={() => {
-              setSelectedTemplate(null);
-              setIsModalOpen(true);
+              setNewTemplateName("");
+              setNewTemplateDesc("");
+              setNewTemplateError("");
+              setSelectedStyleCard("generic");
+              setIsCreateModalOpen(true);
             }}
             className="customizer-btn primary"
           >
@@ -1740,6 +2015,8 @@ export default function TemplatesPanel() {
                             onClick={() => {
                               setSelectedTemplate(t);
                               setIsModalOpen(true);
+                              setCustomizerLoading(true);
+                              setTimeout(() => setCustomizerLoading(false), 800);
                             }}
                             style={{
                               background: "none",
@@ -1778,6 +2055,8 @@ export default function TemplatesPanel() {
                               onClick={() => {
                                 setSelectedTemplate(t);
                                 setIsModalOpen(true);
+                                setCustomizerLoading(true);
+                                setTimeout(() => setCustomizerLoading(false), 800);
                               }}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -1860,43 +2139,248 @@ export default function TemplatesPanel() {
         )}
       </div>
 
+      {/* 🟢 CREATE TEMPLATE MODAL */}
+      {isCreateModalOpen && (
+        <div className="generic-modal-overlay">
+          <div className="generic-modal-card" style={{ width: "520px" }}>
+            <div className="generic-modal-header" style={{ background: "#ffffff", borderBottom: "1px solid #ebebeb", padding: "16px 20px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#1a1a1a" }}>Create New Template</h3>
+              <button
+                style={{ border: "none", background: "none", fontSize: "18px", cursor: "pointer", color: "#6d7175" }}
+                onClick={() => setIsCreateModalOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="generic-modal-body" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Template Name <span style={{ color: "#d32f2f" }}>*</span></label>
+                <input
+                  type="text"
+                  className="custom-input"
+                  placeholder="e.g. Vintage Leather Engraving"
+                  value={newTemplateName}
+                  onChange={(e) => {
+                    setNewTemplateName(e.target.value);
+                    if (newTemplateError) setNewTemplateError("");
+                  }}
+                  style={{ width: "100%", padding: "8px 12px", border: newTemplateError ? "1.5px solid #d32f2f" : "1px solid #babfc3", borderRadius: "6px" }}
+                />
+                {newTemplateError && (
+                  <span style={{ fontSize: "12px", color: "#d32f2f", fontWeight: 500 }}>{newTemplateError}</span>
+                )}
+              </div>
+
+              <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Description</label>
+                <textarea
+                  className="custom-input"
+                  placeholder="Describe what this template configures..."
+                  value={newTemplateDesc}
+                  onChange={(e) => setNewTemplateDesc(e.target.value)}
+                  style={{ width: "100%", padding: "8px 12px", border: "1px solid #babfc3", borderRadius: "6px", minHeight: "80px", resize: "vertical" }}
+                />
+              </div>
+
+              <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Select Style Category / Thumbnail</label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
+                  
+                  <div
+                    onClick={() => setSelectedStyleCard("watch")}
+                    style={{
+                      border: selectedStyleCard === "watch" ? "2px solid #008060" : "1px solid #babfc3",
+                      background: selectedStyleCard === "watch" ? "#f4fbf7" : "#ffffff",
+                      borderRadius: "8px",
+                      padding: "12px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px"
+                    }}
+                  >
+                    <span style={{ fontSize: "24px" }}>⌚</span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Watch Dial Preset</div>
+                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Initials engraving preset</div>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedStyleCard("neon")}
+                    style={{
+                      border: selectedStyleCard === "neon" ? "2px solid #008060" : "1px solid #babfc3",
+                      background: selectedStyleCard === "neon" ? "#f4fbf7" : "#ffffff",
+                      borderRadius: "8px",
+                      padding: "12px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px"
+                    }}
+                  >
+                    <span style={{ fontSize: "24px" }}>💡</span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Neon Sign Preset</div>
+                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Glow color & text options</div>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedStyleCard("pillow")}
+                    style={{
+                      border: selectedStyleCard === "pillow" ? "2px solid #008060" : "1px solid #babfc3",
+                      background: selectedStyleCard === "pillow" ? "#f4fbf7" : "#ffffff",
+                      borderRadius: "8px",
+                      padding: "12px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px"
+                    }}
+                  >
+                    <span style={{ fontSize: "24px" }}>🛋️</span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Pillow Monogram</div>
+                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Large text centerpiece</div>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setSelectedStyleCard("generic")}
+                    style={{
+                      border: selectedStyleCard === "generic" ? "2px solid #008060" : "1px solid #babfc3",
+                      background: selectedStyleCard === "generic" ? "#f4fbf7" : "#ffffff",
+                      borderRadius: "8px",
+                      padding: "12px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px"
+                    }}
+                  >
+                    <span style={{ fontSize: "24px" }}>🎨</span>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Generic Canvas</div>
+                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Blank slate builder</div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+
+            <div className="generic-modal-footer" style={{ borderTop: "1px solid #ebebeb", padding: "12px 20px", background: "#ffffff" }}>
+              <button
+                className="customizer-btn"
+                onClick={() => setIsCreateModalOpen(false)}
+                style={{ padding: "8px 16px", borderRadius: "6px" }}
+              >
+                Cancel
+              </button>
+              <button
+                className="customizer-btn primary"
+                onClick={handleConfirmCreateTemplate}
+                style={{ padding: "8px 16px", borderRadius: "6px" }}
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 🟢 TEMPLATE CUSTOMIZER OVERLAY MODAL */}
       {isModalOpen && (
         <div className="customizer-overlay">
           <div className="customizer-card">
             
-            {/* Customizer Header */}
-            <div className="customizer-header">
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <button
-                  className="customizer-btn"
-                  onClick={() => setIsModalOpen(false)}
-                  style={{ border: "none", background: "transparent", fontSize: "16px", padding: "4px 8px" }}
-                >
-                  ✕
-                </button>
-                <h2>Template Customizer: <span style={{ color: "#008060" }}>{templateName || "New Template"}</span></h2>
+            {customizerLoading ? (
+              <div className="skeleton-customizer-container" style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
+                {/* Skeleton Header */}
+                <div className="skeleton-header" style={{ height: "64px", borderBottom: "1px solid #ebebeb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div className="skeleton-pulse" style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#f0f0f0" }} />
+                    <div className="skeleton-pulse" style={{ width: "250px", height: "20px", borderRadius: "4px", background: "#f0f0f0" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <div className="skeleton-pulse" style={{ width: "120px", height: "36px", borderRadius: "6px", background: "#f0f0f0" }} />
+                    <div className="skeleton-pulse" style={{ width: "120px", height: "36px", borderRadius: "6px", background: "#f0f0f0" }} />
+                  </div>
+                </div>
+                {/* Skeleton Body */}
+                <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+                  {/* Skeleton Sidebar */}
+                  <div style={{ width: "320px", borderRight: "1px solid #ebebeb", padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
+                    <div className="skeleton-pulse" style={{ width: "80px", height: "16px", borderRadius: "4px", background: "#f0f0f0" }} />
+                    <div className="skeleton-pulse" style={{ width: "100%", height: "40px", borderRadius: "6px", background: "#f0f0f0" }} />
+                    <div className="skeleton-pulse" style={{ width: "100%", height: "40px", borderRadius: "6px", background: "#f0f0f0" }} />
+                    <div className="skeleton-pulse" style={{ width: "100%", height: "40px", borderRadius: "6px", background: "#f0f0f0" }} />
+                    <div className="skeleton-pulse" style={{ width: "100%", height: "150px", borderRadius: "8px", background: "#f0f0f0" }} />
+                  </div>
+                  {/* Skeleton Canvas */}
+                  <div style={{ flex: 1, padding: "40px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f6f6f7" }}>
+                    <div className="skeleton-pulse" style={{ width: "450px", height: "450px", borderRadius: "12px", background: "#ffffff", border: "1px solid #ebebeb", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "20px", padding: "20px" }} />
+                  </div>
+                </div>
               </div>
-              
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  className="customizer-btn"
-                  onClick={() => {
-                    // Open product linker popup directly inside customizer
-                    setLinkingTemplateId(selectedTemplate?.id || "temp-draft");
-                    setIsLinkModalOpen(true);
-                  }}
-                >
-                  🔗 Link to Products ({linkedProducts.length})
-                </button>
-                <button
-                  className="customizer-btn primary"
-                  onClick={handleSaveTemplate}
-                >
-                  💾 Save Template
-                </button>
-              </div>
-            </div>
+            ) : (
+              <>
+                {/* Customizer Header */}
+                <div className="customizer-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <button
+                      className="customizer-btn"
+                      onClick={() => setIsModalOpen(false)}
+                      style={{ border: "none", background: "transparent", fontSize: "16px", padding: "4px 8px" }}
+                    >
+                      ✕
+                    </button>
+                    <h2>Template Customizer: <span style={{ color: "#008060" }}>{templateName || "New Template"}</span></h2>
+                  </div>
+                  
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                    {/* Undo/Redo Buttons */}
+                    <div style={{ display: "flex", border: "1px solid #babfc3", borderRadius: "6px", background: "#ffffff", marginRight: "10px" }}>
+                      <button
+                        className="customizer-btn"
+                        onClick={handleUndo}
+                        disabled={historyIndex <= 0}
+                        title="Undo Change"
+                        style={{ border: "none", borderRadius: "6px 0 0 6px", padding: "8px 12px", background: "transparent", cursor: historyIndex <= 0 ? "not-allowed" : "pointer", opacity: historyIndex <= 0 ? 0.4 : 1 }}
+                      >
+                        ↩ Undo
+                      </button>
+                      <div style={{ width: "1px", background: "#babfc3" }} />
+                      <button
+                        className="customizer-btn"
+                        onClick={handleRedo}
+                        disabled={historyIndex >= optionHistory.length - 1}
+                        title="Redo Change"
+                        style={{ border: "none", borderRadius: "0 6px 6px 0", padding: "8px 12px", background: "transparent", cursor: historyIndex >= optionHistory.length - 1 ? "not-allowed" : "pointer", opacity: historyIndex >= optionHistory.length - 1 ? 0.4 : 1 }}
+                      >
+                        Redo ↪
+                      </button>
+                    </div>
+                    
+                    <button
+                      className="customizer-btn"
+                      onClick={() => {
+                        setLinkingTemplateId(selectedTemplate?.id || "temp-draft");
+                        setIsLinkModalOpen(true);
+                      }}
+                    >
+                      🔗 Link to Products ({linkedProducts.length})
+                    </button>
+                    <button
+                      className="customizer-btn primary"
+                      onClick={handleSaveTemplate}
+                    >
+                      💾 Save Template
+                    </button>
+                  </div>
+                </div>
 
             {/* Split pane Workspace */}
             <div className="customizer-pane">
@@ -2209,6 +2693,7 @@ export default function TemplatesPanel() {
                                   style={{ width: "100%", padding: "4px 8px", fontSize: "12px", marginBottom: "8px" }}
                                   value={opt.label}
                                   onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
+                                  onBlur={() => pushHistory(options)}
                                 />
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
                                   <div>
@@ -2217,7 +2702,7 @@ export default function TemplatesPanel() {
                                       className="custom-input"
                                       style={{ width: "100%", padding: "4px", fontSize: "11px" }}
                                       value={opt.type}
-                                      onChange={(e) => handleUpdateOption(opt.id, { type: e.target.value as any })}
+                                      onChange={(e) => handleUpdateOptionAndPush(opt.id, { type: e.target.value as any })}
                                     >
                                       <option value="text">Single Line Text</option>
                                       <option value="select">Dropdown Choice</option>
@@ -2235,6 +2720,7 @@ export default function TemplatesPanel() {
                                       style={{ width: "100%", padding: "4px", fontSize: "11px" }}
                                       value={opt.priceUpcharge}
                                       onChange={(e) => handleUpdateOption(opt.id, { priceUpcharge: parseFloat(e.target.value) || 0 })}
+                                      onBlur={() => pushHistory(options)}
                                     />
                                   </div>
                                 </div>
@@ -2249,7 +2735,7 @@ export default function TemplatesPanel() {
                                           type="radio"
                                           name={`choicesType-${opt.id}`}
                                           checked={opt.choicesType !== "global"}
-                                          onChange={() => handleUpdateOption(opt.id, { choicesType: "custom" })}
+                                          onChange={() => handleUpdateOptionAndPush(opt.id, { choicesType: "custom" })}
                                         /> Custom
                                       </label>
                                       <label style={{ fontSize: "10px", cursor: "pointer" }}>
@@ -2257,7 +2743,7 @@ export default function TemplatesPanel() {
                                           type="radio"
                                           name={`choicesType-${opt.id}`}
                                           checked={opt.choicesType === "global"}
-                                          onChange={() => handleUpdateOption(opt.id, { choicesType: "global" })}
+                                          onChange={() => handleUpdateOptionAndPush(opt.id, { choicesType: "global" })}
                                         /> Asset Link
                                       </label>
                                     </div>
@@ -2268,7 +2754,7 @@ export default function TemplatesPanel() {
                                         value={opt.assetSetId || ""}
                                         onChange={(e) => {
                                           const asset = assets.find(a => a.id === e.target.value);
-                                          handleUpdateOption(opt.id, { assetSetId: e.target.value, choices: asset?.value || "" });
+                                          handleUpdateOptionAndPush(opt.id, { assetSetId: e.target.value, choices: asset?.value || "" });
                                         }}
                                       >
                                         <option value="">Select Asset...</option>
@@ -2285,6 +2771,7 @@ export default function TemplatesPanel() {
                                         placeholder={opt.type === "swatch" ? "#000, #fff" : "Option A, Option B"}
                                         value={opt.choices || ""}
                                         onChange={(e) => handleUpdateOption(opt.id, { choices: e.target.value })}
+                                        onBlur={() => pushHistory(options)}
                                       />
                                     )}
                                   </div>
@@ -2302,6 +2789,7 @@ export default function TemplatesPanel() {
                                           style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
                                           value={opt.canvasX ?? 500}
                                           onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
+                                          onBlur={() => pushHistory(options)}
                                         />
                                       </div>
                                       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -2312,6 +2800,7 @@ export default function TemplatesPanel() {
                                           style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
                                           value={opt.canvasY ?? 500}
                                           onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
+                                          onBlur={() => pushHistory(options)}
                                         />
                                       </div>
                                     </div>
@@ -2326,6 +2815,7 @@ export default function TemplatesPanel() {
                                               style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
                                               value={opt.canvasFontSize ?? 80}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
+                                              onBlur={() => pushHistory(options)}
                                             />
                                           </div>
                                           <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -2336,6 +2826,7 @@ export default function TemplatesPanel() {
                                               style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
                                               value={opt.canvasRotation ?? 0}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
+                                              onBlur={() => pushHistory(options)}
                                             />
                                           </div>
                                         </>
@@ -2349,6 +2840,7 @@ export default function TemplatesPanel() {
                                               style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
                                               value={opt.canvasWidth ?? 300}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
+                                              onBlur={() => pushHistory(options)}
                                             />
                                           </div>
                                           <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -2359,6 +2851,7 @@ export default function TemplatesPanel() {
                                               style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
                                               value={opt.canvasHeight ?? 300}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
+                                              onBlur={() => pushHistory(options)}
                                             />
                                           </div>
                                         </>
@@ -2460,7 +2953,8 @@ export default function TemplatesPanel() {
 
               </div>
             </div>
-            
+            </>
+            )}
           </div>
         </div>
       )}
