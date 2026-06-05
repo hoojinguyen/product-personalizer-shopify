@@ -92,13 +92,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 // Action: Save customization configuration
 export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+  const shop = session.shop;
   const formData = await request.formData();
   
   const bulkUpdatesJson = formData.get("bulkUpdates") as string;
   if (bulkUpdatesJson) {
     try {
       const metafields = JSON.parse(bulkUpdatesJson);
-      const errors = await PersonalizationConfigSync.publishRawMetafields({ request }, metafields);
+      const errors = await PersonalizationConfigSync.publishRawMetafields({ admin, shop, db }, metafields);
       return { ok: errors.length === 0, errors };
     } catch (e: any) {
       console.error("Error executing bulk metafieldsSet", e);
@@ -120,7 +122,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     const result = await PersonalizationConfigSync.syncProductConfig(
-      { request },
+      { admin, shop, db },
       productId,
       { enabled, options, upchargeVariantId }
     );

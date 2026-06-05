@@ -330,55 +330,6 @@ export class TarOutputPacker implements OutputPacker {
  */
 export class FulfillmentPackagePackager {
   /**
-   * Static entry point for route loader calls. Authenticates and streams download.
-   */
-  static async downloadResponse(request: Request): Promise<Response> {
-    const urlObj = new URL(request.url);
-    const orderId = urlObj.searchParams.get("orderId");
-
-    if (!orderId) {
-      return new Response("Missing orderId parameter", { status: 400 });
-    }
-
-    const shopifyModule = await import("../shopify.server");
-    const { authenticate } = shopifyModule;
-
-    let adminClient: any = null;
-    try {
-      const authResult = await authenticate.admin(request);
-      adminClient = authResult.admin;
-    } catch (adminErr) {
-      try {
-        const authResult = await authenticate.public.appProxy(request);
-        adminClient = authResult.admin;
-      } catch (proxyErr) {
-        console.error("Authentication failed for zip download", adminErr, proxyErr);
-        return new Response("Unauthorized download access", { status: 401 });
-      }
-    }
-
-    if (!adminClient) {
-      return new Response("Shopify API context unavailable", { status: 500 });
-    }
-
-    try {
-      const packager = new FulfillmentPackagePackager();
-      const result = await packager.compile({ admin: adminClient, orderId });
-
-      return new Response(result.stream as any, {
-        headers: {
-          "Content-Type": result.contentType,
-          "Content-Disposition": `attachment; filename="${result.filename}"`,
-          "Cache-Control": "no-store, no-cache, must-revalidate"
-        }
-      });
-    } catch (error: any) {
-      console.error("Unexpected error compiling fulfillment package:", error);
-      return new Response(`Fulfillment compiling failed: ${error.message || error}`, { status: 500 });
-    }
-  }
-
-  /**
    * Compiles the Manufacturing Dataset and CDN layouts into a streaming ZIP or TAR archive.
    * Signature is backward compatible with compile(admin, orderId, options).
    */

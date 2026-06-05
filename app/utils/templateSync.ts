@@ -133,17 +133,6 @@ export class ShopifyAdminGraphQLAdapter implements ShopifyAdminPort {
   }
 }
 
-/**
- * Context parameters to automatically resolve dependencies.
- * If only `request` is provided, Shopify credentials are dynamically resolved.
- */
-export interface ContextArgs {
-  request?: Request;
-  admin?: ShopifyAdminClient;
-  shop?: string;
-  db?: typeof db;
-}
-
 export interface PersonalizationConfigInput {
   enabled: boolean;
   templateId?: string;
@@ -157,28 +146,20 @@ export interface PersonalizationConfigInput {
 }
 
 /**
+ * Context parameters containing explicit dependencies.
+ */
+export interface ContextArgs {
+  admin: ShopifyAdminClient;
+  shop: string;
+  db?: typeof db;
+}
+
+/**
  * Helper to resolve database, admin client, and shop domain from incoming arguments.
  */
 async function resolveContext(args: ContextArgs) {
-  let admin = args.admin;
-  let shop = args.shop;
   const dbClient = args.db || db;
-
-  if (args.request && (!admin || !shop)) {
-    const { authenticate } = await import("../shopify.server");
-    const authResult = await authenticate.admin(args.request);
-    admin = authResult.admin as unknown as ShopifyAdminClient;
-    shop = authResult.session.shop;
-  }
-
-  if (!admin) {
-    throw new Error("Shopify Admin Client could not be resolved. Provide either request or admin.");
-  }
-  if (!shop) {
-    throw new Error("Shopify Shop domain could not be resolved. Provide either request or shop.");
-  }
-
-  return { admin, shop, db: dbClient };
+  return { admin: args.admin, shop: args.shop, db: dbClient };
 }
 
 /**

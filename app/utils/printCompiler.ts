@@ -791,25 +791,19 @@ export class OrderPrintCompiler {
   }
 
   /**
-   * Primary entry point for Shopify webhooks.
-   * Decoupled webhook processing logic matching Candidate 2.
-   * Authenticates HMAC, logs PENDING record, returns Response under 50ms, then compiles in background.
+   * Enqueues the webhook payload for print file compilation and starts the worker queue.
+   * Completely contextless (no HTTP requests, no dynamic server imports).
    */
-  static async processWebhook(request: Request): Promise<OrderPrintCompilerResult> {
-    const shopifyModule = await import("../shopify.server");
-    const { authenticate } = shopifyModule;
-    const { shop, admin, payload } = await authenticate.webhook(request);
-
-    if (!admin) {
-      throw new Error("Webhook Admin context is missing. Cannot process order details.");
-    }
-
-    const orderId = String(payload.id);
-    const dbModule = await import("../db.server");
-    const db = dbModule.default;
+  static async enqueueWebhookJob(params: {
+    shop: string;
+    orderId: string;
+    adminClient: any;
+    dbClient: any;
+  }): Promise<OrderPrintCompilerResult> {
+    const { shop, orderId, adminClient, dbClient } = params;
 
     // Check if order log entry already exists
-    const existingLog = await db.orderProcessingLog.findFirst({
+    const existingLog = await dbClient.orderProcessingLog.findFirst({
       where: { shop, orderId }
     });
 
@@ -818,13 +812,13 @@ export class OrderPrintCompiler {
       logId = existingLog.id;
       // Reset status to PENDING if failed
       if (existingLog.status === "FAILED") {
-        await db.orderProcessingLog.update({
+        await dbClient.orderProcessingLog.update({
           where: { id: logId },
           data: { status: "PENDING", error: null }
         });
       }
     } else {
-      const logEntry = await db.orderProcessingLog.create({
+      const logEntry = await dbClient.orderProcessingLog.create({
         data: {
           shop,
           orderId,
@@ -835,7 +829,7 @@ export class OrderPrintCompiler {
     }
 
     // Trigger background queue execution immediately (non-blocking)
-    this.ensureWorkerRunning(admin).catch((err) => {
+    this.ensureWorkerRunning(adminClient).catch((err) => {
       console.error("[Webhook Queue] Worker launch exception:", err);
     });
 

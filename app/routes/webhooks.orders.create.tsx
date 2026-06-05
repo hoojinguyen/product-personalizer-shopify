@@ -1,9 +1,23 @@
 import type { ActionFunctionArgs } from "react-router";
 import { OrderPrintCompiler } from "../utils/printCompiler";
+import db from "../db.server";
+import { authenticate } from "../shopify.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
-    const result = await OrderPrintCompiler.processWebhook(request);
+    const { shop, admin, payload } = await authenticate.webhook(request);
+
+    if (!admin) {
+      return new Response("Webhook Admin context is missing. Cannot process order details.", { status: 400 });
+    }
+
+    const orderId = String(payload.id);
+    const result = await OrderPrintCompiler.enqueueWebhookJob({
+      shop,
+      orderId,
+      adminClient: admin,
+      dbClient: db,
+    });
 
     if (result.success) {
       console.log(`Order ${result.orderId} enqueued for background print file compilation.`);
