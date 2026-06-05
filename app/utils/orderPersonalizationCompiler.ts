@@ -2,7 +2,8 @@ import db from "../db.server";
 import { PersonalizationConfig } from "./configEngine";
 import type { CustomizationOption, LayoutNode } from "./configEngine";
 import { ShopifyFilePublisher } from "./shopifyFilePublisher";
-import { VisualLayoutRenderer, LayoutTree } from "./renderingSeam";
+import { VisualLayoutRenderer } from "./renderingSeam";
+import type { FontDatabasePort, NetworkFetcherPort } from "./renderingSeam";
 import { PassThrough, Readable } from "stream";
 import * as archiverModule from "archiver";
 import fs from "fs";
@@ -45,7 +46,7 @@ export interface ShopifyGraphQLClient {
   }>;
 }
 
-export interface DatabaseAdapter {
+export interface DatabaseAdapter extends FontDatabasePort {
   getFontValue(shop: string, fontName: string): Promise<string | null>;
   getTemplateOptions(templateId: string, shop: string): Promise<string | null>;
   createProcessingLog(shop: string, orderId: string): Promise<{ id: string }>;
@@ -57,7 +58,7 @@ export interface DatabaseAdapter {
   ): Promise<void>;
 }
 
-export interface NetworkFetcher {
+export interface NetworkFetcher extends NetworkFetcherPort {
   fetchAsset(url: string): Promise<Buffer>;
 }
 
@@ -206,229 +207,6 @@ export class DefaultFolderStructureBuilder implements FolderStructureBuilder {
 }
 
 // ==========================================
-// Headless SVG Layout Rendering
-// ==========================================
-
-export class SvgLayoutRenderer implements VisualLayoutRenderer {
-  public svgLayers = "";
-  public base64Fonts = "";
-  private embeddedFontsSet = new Set<string>();
-
-  constructor(
-    private shop: string,
-    private database: DatabaseAdapter,
-    private network: NetworkFetcher,
-    private warnings: string[]
-  ) {}
-
-  async renderText(node: LayoutNode): Promise<void> {
-    const fontName = node.fontFamily || "Arial";
-    const fontColor = node.color || "#000000";
-
-    if (fontName !== "Arial" && fontName !== "Georgia" && !this.embeddedFontsSet.has(fontName)) {
-      try {
-        const fontValue = await this.database.getFontValue(this.shop, fontName);
-        if (fontValue) {
-          const assetData = JSON.parse(fontValue);
-          if (assetData.url) {
-            const fontBuffer = await this.network.fetchAsset(assetData.url);
-            const b64 = fontBuffer.toString("base64");
-            this.base64Fonts += `
-              @font-face {
-                font-family: "${fontName}";
-                src: url("data:font/truetype;charset=utf-8;base64,${b64}") format("truetype");
-              }
-            `;
-            this.embeddedFontsSet.add(fontName);
-          }
-        }
-      } catch (err: unknown) {
-        this.warnings.push(`Failed to embed font ${fontName}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
-    this.svgLayers += `
-      <g transform="translate(${node.x}, ${node.y}) rotate(${node.rotation})">
-        <text
-          text-anchor="middle"
-          alignment-baseline="middle"
-          dominant-baseline="central"
-          font-family="'${fontName}', Arial, sans-serif"
-          font-size="${node.fontSize ?? 48}"
-          fill="${fontColor}"
-          font-weight="bold"
-        >${node.text}</text>
-      </g>
-    `;
-  }
-
-  async renderClipart(node: LayoutNode): Promise<void> {
-    await this.renderImageNode(node);
-  }
-
-  async renderFile(node: LayoutNode): Promise<void> {
-    await this.renderImageNode(node);
-  }
-
-  private async renderImageNode(node: LayoutNode): Promise<void> {
-    if (!node.imageUrl) return;
-
-    const w = node.width ?? 250;
-    const h = node.height ?? 250;
-    let imageHref = node.imageUrl;
-
-    if (imageHref.startsWith("http")) {
-      try {
-        const imgBuffer = await this.network.fetchAsset(imageHref);
-        const contentType = imageHref.includes("png") ? "image/png" : "image/jpeg";
-        imageHref = `data:${contentType};base64,${imgBuffer.toString("base64")}`;
-      } catch (err: unknown) {
-        this.warnings.push(`Failed to inline image asset ${imageHref}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
-    this.svgLayers += `
-      <g transform="translate(${node.x}, ${node.y}) rotate(${node.rotation})">
-        <image
-          href="${imageHref}"
-          x="-${w / 2}"
-          y="-${h / 2}"
-          width="${w}"
-          height="${h}"
-        />
-      </g>
-    `;
-  }
-}
-
-export interface SingleCompilationInput {
-  shop: string;
-  orderId: string;
-  orderName: string;
-  lineItem: {
-    id: string;
-    product_id: string;
-    title: string;
-    variant_title?: string | null;
-    properties: Array<{ name: string; value: unknown }>;
-  };
-}
-
-export async function compileSingleLayoutToSvg(
-  input: SingleCompilationInput,
-  dbAdapter: DatabaseAdapter,
-  network: NetworkFetcher,
-  shopifyClient: ShopifyGraphQLClient,
-  warnings: string[]
-): Promise<string> {
-  const { shop, orderId, orderName, lineItem } = input;
-
-  const shopperValues: Record<string, unknown> = {};
-  if (lineItem.properties) {
-    lineItem.properties.forEach((p) => {
-      if (p.name && p.value !== undefined && p.value !== null) {
-        shopperValues[p.name] = p.value;
-      }
-    });
-  }
-
-  let configOptions: CustomizationOption[] = [];
-  const query = `#graphql
-    query getProductConfig($id: ID!) {
-      product(id: $id) {
-        metafield(namespace: "app", key: "customization_config") {
-          value
-        }
-      }
-    }
-  `;
-  
-  const response = await shopifyClient.graphql(query, { variables: { id: `gid://shopify/Product/${lineItem.product_id}` } });
-  const json = await response.json();
-  const configMetafield = json.data?.product?.metafield?.value || null;
-
-  if (configMetafield) {
-    try {
-      const parsed = JSON.parse(configMetafield);
-      if (parsed.options && parsed.options.length > 0) {
-        configOptions = parsed.options;
-      } else if (parsed.templateId) {
-        try {
-          const templateOptions = await dbAdapter.getTemplateOptions(parsed.templateId, shop);
-          if (templateOptions) {
-            const templateParsed = JSON.parse(templateOptions);
-            configOptions = templateParsed.options || [];
-          } else {
-            warnings.push(`Template ${parsed.templateId} not found in database.`);
-          }
-        } catch (e: unknown) {
-          warnings.push(`Failed to load template ${parsed.templateId}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-    } catch (e: unknown) {
-      warnings.push(`Failed to parse product customization config: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-
-  const svgWidth = 800;
-  const svgHeight = 800;
-
-  const personalizationConfig = new PersonalizationConfig(configOptions);
-  const resolved = personalizationConfig.resolve(shopperValues);
-
-  const layoutTree = new LayoutTree(resolved.layoutNodes);
-  const svgRenderer = new SvgLayoutRenderer(shop, dbAdapter, network, warnings);
-  await layoutTree.renderAllAsync(svgRenderer);
-
-  let svgLayers = svgRenderer.svgLayers;
-  let base64Fonts = svgRenderer.base64Fonts;
-
-  if (!svgLayers) {
-    const customText = shopperValues["Custom Engraving Text"] || shopperValues["Engraving Text"] || "";
-    const fontStyle = shopperValues["Font Style"] || shopperValues["Font"] || "Arial";
-    const textColor = shopperValues["Engraving Color"] || shopperValues["Text Color"] || "#000000";
-    
-    if (customText) {
-      svgLayers = `
-        <g transform="translate(400, 400)">
-          <text
-            text-anchor="middle"
-            alignment-baseline="middle"
-            dominant-baseline="central"
-            font-family="${fontStyle}, Arial, sans-serif"
-            font-size="80"
-            fill="${textColor}"
-            font-weight="bold"
-          >${customText}</text>
-        </g>
-      `;
-    }
-  }
-
-  const lineItemTitle = lineItem.title || "Personalized Item";
-  const svgContent = `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgWidth} ${svgHeight}" width="${svgWidth}" height="${svgHeight}">
-      <defs>
-        <style>
-          ${base64Fonts}
-        </style>
-      </defs>
-      <rect width="100%" height="100%" fill="#ffffff" />
-      ${svgLayers}
-      <rect x="10" y="10" width="780" height="780" fill="none" stroke="#008060" stroke-width="1" stroke-dasharray="3,3" />
-      <text x="25" y="35" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#008060" font-weight="bold">
-        PRODUCTION READY — Infinite Vector Scale
-      </text>
-      <text x="25" y="55" font-family="Helvetica, Arial, sans-serif" font-size="10" fill="#6d7175">
-        Order: ${orderName} | Item: ${lineItemTitle}
-      </text>
-    </svg>
-  `.trim();
-
-  return svgContent;
-}
-
-// ==========================================
 // Combined Order Personalization Compiler
 // ==========================================
 
@@ -512,31 +290,76 @@ export class OrderPersonalizationCompiler {
           value: attr.value,
         })) || [];
 
-        const svgContent = await compileSingleLayoutToSvg(
-          {
-            shop,
-            orderId,
-            orderName,
-            lineItem: {
-              id: item.id.split("/").pop() || item.id,
-              product_id: productId,
-              title: item.title,
-              variant_title: item.variant?.title || null,
-              properties,
+        // Retrieve config
+        let configOptions: CustomizationOption[] = [];
+        const query = `#graphql
+          query getProductConfig($id: ID!) {
+            product(id: $id) {
+              metafield(namespace: "app", key: "customization_config") {
+                value
+              }
             }
-          },
-          dbAdapter,
-          network,
-          shopifyClient,
-          warnings
+          }
+        `;
+        
+        const configResponse = await shopifyClient.graphql(query, { variables: { id: `gid://shopify/Product/${productId}` } });
+        const configJson = await configResponse.json();
+        const configMetafield = configJson.data?.product?.metafield?.value || null;
+
+        if (configMetafield) {
+          try {
+            const parsed = JSON.parse(configMetafield);
+            if (parsed.options && parsed.options.length > 0) {
+              configOptions = parsed.options;
+            } else if (parsed.templateId) {
+              try {
+                const templateOptions = await dbAdapter.getTemplateOptions(parsed.templateId, shop);
+                if (templateOptions) {
+                  const templateParsed = JSON.parse(templateOptions);
+                  configOptions = templateParsed.options || [];
+                } else {
+                  warnings.push(`Template ${parsed.templateId} not found in database.`);
+                }
+              } catch (e: unknown) {
+                warnings.push(`Failed to load template ${parsed.templateId}: ${e instanceof Error ? e.message : String(e)}`);
+              }
+            }
+          } catch (e: unknown) {
+            warnings.push(`Failed to parse product customization config: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
+
+        const shopperValues: Record<string, unknown> = {};
+        properties.forEach((p: any) => {
+          shopperValues[p.name] = p.value;
+        });
+
+        const personalizationConfig = new PersonalizationConfig(configOptions);
+        const resolved = personalizationConfig.resolve(shopperValues);
+
+        // Render to SVG using VisualLayoutRenderer
+        const compiler = new VisualLayoutRenderer({
+          database: dbAdapter,
+          network
+        });
+
+        const compileResult = await compiler.compileToSvg(
+          shop,
+          orderName,
+          item.title || "Personalized Item",
+          resolved.layoutNodes
         );
+
+        if (compileResult.warnings.length > 0) {
+          warnings.push(...compileResult.warnings);
+        }
 
         const publisher = new ShopifyFilePublisher();
         const filename = `print_${orderId}_${item.id.split("/").pop() || item.id}.svg`;
         const published = await publisher.publish(
           shopifyClient as any,
           {
-            content: svgContent,
+            content: compileResult.svg,
             filename,
             mimeType: "image/svg+xml"
           }
@@ -763,27 +586,60 @@ export class OrderPersonalizationCompiler {
           if (svgUrl) {
             svgBuffer = await network.fetchAsset(svgUrl);
           } else {
-            const warnings: string[] = [];
-            const properties = Object.keys(item.choices).map(k => ({ name: k, value: item.choices[k] }));
-            const svgContent = await compileSingleLayoutToSvg(
-              {
-                shop,
-                orderId,
-                orderName: order.name,
-                lineItem: {
-                  id: item.id,
-                  product_id: item.productId,
-                  title: item.title,
-                  variant_title: item.variantTitle,
-                  properties,
+            // Compile SVG on-the-fly locally in-memory using collapsed VisualLayoutRenderer!
+            let configOptions: CustomizationOption[] = [];
+            const query = `#graphql
+              query getProductConfig($id: ID!) {
+                product(id: $id) {
+                  metafield(namespace: "app", key: "customization_config") {
+                    value
+                  }
                 }
-              },
-              dbAdapter,
-              network,
-              shopifyClient,
-              warnings
+              }
+            `;
+            
+            const response = await shopifyClient.graphql(query, { variables: { id: `gid://shopify/Product/${item.productId}` } });
+            const json = await response.json();
+            const configMetafield = json.data?.product?.metafield?.value || null;
+
+            if (configMetafield) {
+              try {
+                const parsed = JSON.parse(configMetafield);
+                if (parsed.options && parsed.options.length > 0) {
+                  configOptions = parsed.options;
+                } else if (parsed.templateId) {
+                  try {
+                    const templateOptions = await dbAdapter.getTemplateOptions(parsed.templateId, shop);
+                    if (templateOptions) {
+                      const templateParsed = JSON.parse(templateOptions);
+                      configOptions = templateParsed.options || [];
+                    }
+                  } catch (e) {}
+                }
+              } catch (e) {}
+            }
+
+            const shopperValues: Record<string, unknown> = {};
+            Object.keys(item.choices).forEach(k => {
+              shopperValues[k] = item.choices[k];
+            });
+
+            const personalizationConfig = new PersonalizationConfig(configOptions);
+            const resolved = personalizationConfig.resolve(shopperValues);
+
+            const compiler = new VisualLayoutRenderer({
+              database: dbAdapter,
+              network
+            });
+
+            const compileResult = await compiler.compileToSvg(
+              shop,
+              order.name,
+              item.title || "Personalized Item",
+              resolved.layoutNodes
             );
-            svgBuffer = Buffer.from(svgContent, "utf-8");
+
+            svgBuffer = Buffer.from(compileResult.svg, "utf-8");
           }
 
           yield {
