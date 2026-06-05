@@ -1,12 +1,13 @@
-import { CustomizationOption, isOptionVisible } from "./configEngine";
+import type { CustomizationOption } from "./configEngine";
+import { PersonalizationLayoutEngine } from "./layoutEngine";
 
 export interface CanvasRendererOptions {
   canvas: HTMLCanvasElement;
   options: CustomizationOption[];
-  shopperValues: Record<string, any>;
+  shopperValues: Record<string, unknown>;
   bgImage?: HTMLImageElement | null;
   mockupView?: string;
-  fontAssets?: any[];
+  fontAssets?: unknown[];
   scale?: number; // 0.5 for admin (400x400), 1.0 for storefront (800x800)
   
   // Admin-specific overlay controls
@@ -113,63 +114,42 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
     }
   }
 
-  // 3. Render Customization Layers (Bottom to Top)
-  options.forEach((opt) => {
-    if (!isOptionVisible(opt, shopperValues)) return;
+  // 3. Compile Layout nodes from unified layout engine
+  const nodes = PersonalizationLayoutEngine.compileLayout(options, shopperValues);
 
+  // 4. Render Customization Layers (Bottom to Top)
+  nodes.forEach((node) => {
     ctx.save();
     
     // Scale coordinate placements
-    const cx = (opt.canvasX ?? 400) * scale;
-    const cy = (opt.canvasY ?? 400) * scale;
+    const cx = node.x * scale;
+    const cy = node.y * scale;
     ctx.translate(cx, cy);
 
-    if (opt.canvasRotation) {
-      ctx.rotate((opt.canvasRotation * Math.PI) / 180);
+    if (node.rotation) {
+      ctx.rotate((node.rotation * Math.PI) / 180);
     }
 
     let renderW = 0;
     let renderH = 0;
 
-    let activeFont = "Arial";
-    let activeColor = "#000000";
-
-    // Link Font Option selections
-    const fontOption = options.find(o => o.type === "font");
-    if (fontOption && shopperValues[fontOption.id]) {
-      activeFont = shopperValues[fontOption.id];
-    }
-
-    // Link Swatch Option selections
-    const swatchOption = options.find(o => o.type === "swatch" && shopperValues[o.id]);
-    if (swatchOption && shopperValues[swatchOption.id]) {
-      activeColor = shopperValues[swatchOption.id];
-    } else if (shopperValues[`${opt.id}_color`]) {
-      activeColor = shopperValues[`${opt.id}_color`];
-    } else if (opt.choices) {
-      activeColor = opt.choices.split(",")[0]?.trim() || "#000000";
-    }
-
-    if (opt.type === "text" || opt.type === "textarea") {
-      ctx.fillStyle = activeColor;
+    if (node.type === "text" || node.type === "textarea") {
+      ctx.fillStyle = node.color || "#000000";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const fontSize = (opt.canvasFontSize ?? 48) * scale;
-      ctx.font = `bold ${fontSize}px "${activeFont}", Arial, sans-serif`;
+      const fontSize = (node.fontSize ?? 48) * scale;
+      ctx.font = `bold ${fontSize}px "${node.fontFamily}", Arial, sans-serif`;
 
-      let shopperText = shopperValues[opt.id] !== undefined ? shopperValues[opt.id] : (opt.defaultValue !== undefined ? opt.defaultValue : opt.label);
-      if (opt.caseConstraint === "uppercase") shopperText = String(shopperText).toUpperCase();
-      if (opt.caseConstraint === "lowercase") shopperText = String(shopperText).toLowerCase();
-
+      const shopperText = node.text || "";
       ctx.fillText(shopperText, 0, 0);
 
-      renderW = fontSize * String(shopperText).length * 0.5;
+      renderW = fontSize * shopperText.length * 0.5;
       renderH = fontSize;
-    } else if (opt.type === "clipart") {
-      renderW = (opt.canvasWidth ?? 250) * scale;
-      renderH = (opt.canvasHeight ?? 250) * scale;
+    } else if (node.type === "clipart") {
+      renderW = node.width * scale;
+      renderH = node.height * scale;
 
-      const cacheImg = loadedLayerImages[opt.id] || null;
+      const cacheImg = loadedLayerImages[node.id] || null;
       if (cacheImg) {
         ctx.drawImage(cacheImg, -renderW / 2, -renderH / 2, renderW, renderH);
       } else {
@@ -185,14 +165,14 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        const clipartVal = shopperValues[opt.id] || opt.label;
+        const clipartVal = node.imageUrl || node.label;
         ctx.fillText(`🎨 Clipart: ${clipartVal}`, 0, 0);
       }
-    } else if (opt.type === "file") {
-      renderW = (opt.canvasWidth ?? 250) * scale;
-      renderH = (opt.canvasHeight ?? 250) * scale;
+    } else if (node.type === "file") {
+      renderW = node.width * scale;
+      renderH = node.height * scale;
 
-      const uploadedImg = loadedLayerImages[opt.id] || overlayImage || null;
+      const uploadedImg = loadedLayerImages[node.id] || overlayImage || null;
       if (uploadedImg) {
         ctx.drawImage(uploadedImg, -renderW / 2, -renderH / 2, renderW, renderH);
       } else {
@@ -206,13 +186,13 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
         ctx.font = `bold ${10 * scale}px Arial`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(shopperValues[opt.id] ? `📸 Loaded: Image` : `📸 Upload: ${opt.label}`, 0, 0);
+        ctx.fillText(node.imageUrl ? `📸 Loaded: Image` : `📸 Upload: ${node.label}`, 0, 0);
       }
     }
 
-    // 4. Draw Selected/Hovered Bounding Boxes & Rotate/Resize Controls
-    const isSelected = opt.id === activeLayerId;
-    const isHovered = opt.id === hoveredOptionId;
+    // 5. Draw Selected/Hovered Bounding Boxes & Rotate/Resize Controls
+    const isSelected = node.id === activeLayerId;
+    const isHovered = node.id === hoveredOptionId;
 
     if (!livePreview && (isSelected || isHovered)) {
       ctx.strokeStyle = isSelected ? "#008060" : "rgba(0, 128, 96, 0.4)";

@@ -1,4 +1,5 @@
-import { CustomizationOption, isOptionVisible } from "./configEngine";
+import { CustomizationOption } from "./configEngine";
+import { PersonalizationLayoutEngine } from "./layoutEngine";
 import { ShopifyFilePublisher } from "./shopifyFilePublisher";
 
 export interface ShopifyOrderLineItem {
@@ -201,103 +202,76 @@ export class PrintFileCompilerImpl {
     let base64Fonts = "";
     const embeddedFontsSet = new Set<string>();
 
-    // 3. Iterate personalization choices and generate SVG elements
-    if (configOptions.length > 0) {
-      for (const opt of configOptions) {
-        if (!isOptionVisible(opt, shopperValues)) {
-          continue;
-        }
+    // 3. Compile Layout Tree
+    const nodes = PersonalizationLayoutEngine.compileLayout(configOptions, shopperValues);
 
-        const val = shopperValues[opt.label];
-        if (val === undefined || val === null || val === "") {
-          continue;
-        }
+    // 4. Render Layout Nodes to SVG
+    for (const node of nodes) {
+      if (node.type === "text" || node.type === "textarea") {
+        const fontName = node.fontFamily || "Arial";
+        const fontColor = node.color || "#000000";
 
-        const cx = opt.canvasX ?? 400;
-        const cy = opt.canvasY ?? 400;
-        const rot = opt.canvasRotation ?? 0;
-
-        if (opt.type === "text" || opt.type === "textarea") {
-          let fontName = "Arial";
-          let fontColor = "#000000";
-
-          for (const otherOpt of configOptions) {
-            const otherVal = shopperValues[otherOpt.label];
-            if (otherOpt.label.toLowerCase().includes("font") || otherOpt.label.toLowerCase().includes("style")) {
-              fontName = String(otherVal) || "Arial";
-            }
-            if (otherOpt.label.toLowerCase().includes("color") || otherOpt.type === "swatch") {
-              fontColor = String(otherVal) || "#000000";
-            }
-          }
-
-          if (fontName !== "Arial" && fontName !== "Georgia" && !embeddedFontsSet.has(fontName)) {
-            try {
-              const fontValue = await database.getFontValue(shop, fontName);
-              if (fontValue) {
-                const assetData = JSON.parse(fontValue);
-                if (assetData.url) {
-                  const fontBuffer = await network.fetchAsset(assetData.url);
-                  const b64 = fontBuffer.toString("base64");
-                  base64Fonts += `
-                    @font-face {
-                      font-family: "${fontName}";
-                      src: url("data:font/truetype;charset=utf-8;base64,${b64}") format("truetype");
-                    }
-                  `;
-                  embeddedFontsSet.add(fontName);
-                }
+        if (fontName !== "Arial" && fontName !== "Georgia" && !embeddedFontsSet.has(fontName)) {
+          try {
+            const fontValue = await database.getFontValue(shop, fontName);
+            if (fontValue) {
+              const assetData = JSON.parse(fontValue);
+              if (assetData.url) {
+                const fontBuffer = await network.fetchAsset(assetData.url);
+                const b64 = fontBuffer.toString("base64");
+                base64Fonts += `
+                  @font-face {
+                    font-family: "${fontName}";
+                    src: url("data:font/truetype;charset=utf-8;base64,${b64}") format("truetype");
+                  }
+                `;
+                embeddedFontsSet.add(fontName);
               }
-            } catch (err: unknown) {
-              warnings.push(`Failed to embed font ${fontName}: ${err instanceof Error ? err.message : String(err)}`);
             }
+          } catch (err: unknown) {
+            warnings.push(`Failed to embed font ${fontName}: ${err instanceof Error ? err.message : String(err)}`);
           }
-
-          const fontSize = opt.canvasFontSize ?? 48;
-          let shopperText = val;
-          if (opt.caseConstraint === "uppercase") shopperText = String(shopperText).toUpperCase();
-          if (opt.caseConstraint === "lowercase") shopperText = String(shopperText).toLowerCase();
-
-          svgLayers += `
-            <g transform="translate(${cx}, ${cy}) rotate(${rot})">
-              <text
-                text-anchor="middle"
-                alignment-baseline="middle"
-                dominant-baseline="central"
-                font-family="'${fontName}', Arial, sans-serif"
-                font-size="${fontSize}"
-                fill="${fontColor}"
-                font-weight="bold"
-              >${shopperText}</text>
-            </g>
-          `;
-        } else if ((opt.type === "clipart" || opt.type === "file") && val) {
-          const w = opt.canvasWidth ?? 250;
-          const h = opt.canvasHeight ?? 250;
-          let imageHref = String(val);
-
-          if (imageHref.startsWith("http")) {
-            try {
-              const imgBuffer = await network.fetchAsset(imageHref);
-              const contentType = imageHref.includes("png") ? "image/png" : "image/jpeg";
-              imageHref = `data:${contentType};base64,${imgBuffer.toString("base64")}`;
-            } catch (err: unknown) {
-              warnings.push(`Failed to inline image asset ${imageHref}: ${err instanceof Error ? err.message : String(err)}`);
-            }
-          }
-
-          svgLayers += `
-            <g transform="translate(${cx}, ${cy}) rotate(${rot})">
-              <image
-                href="${imageHref}"
-                x="-${w / 2}"
-                y="-${h / 2}"
-                width="${w}"
-                height="${h}"
-              />
-            </g>
-          `;
         }
+
+        svgLayers += `
+          <g transform="translate(${node.x}, ${node.y}) rotate(${node.rotation})">
+            <text
+              text-anchor="middle"
+              alignment-baseline="middle"
+              dominant-baseline="central"
+              font-family="'${fontName}', Arial, sans-serif"
+              font-size="${node.fontSize ?? 48}"
+              fill="${fontColor}"
+              font-weight="bold"
+            >${node.text}</text>
+          </g>
+        `;
+      } else if ((node.type === "clipart" || node.type === "file") && node.imageUrl) {
+        const w = node.width;
+        const h = node.height;
+        let imageHref = node.imageUrl;
+
+        if (imageHref.startsWith("http")) {
+          try {
+            const imgBuffer = await network.fetchAsset(imageHref);
+            const contentType = imageHref.includes("png") ? "image/png" : "image/jpeg";
+            imageHref = `data:${contentType};base64,${imgBuffer.toString("base64")}`;
+          } catch (err: unknown) {
+            warnings.push(`Failed to inline image asset ${imageHref}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        svgLayers += `
+          <g transform="translate(${node.x}, ${node.y}) rotate(${node.rotation})">
+            <image
+              href="${imageHref}"
+              x="-${w / 2}"
+              y="-${h / 2}"
+              width="${w}"
+              height="${h}"
+            />
+          </g>
+        `;
       }
     }
 
