@@ -1,5 +1,7 @@
 import type { CustomizationOption } from "./configEngine";
-import { PersonalizationLayoutEngine } from "./layoutEngine";
+import { PersonalizationLayoutEngine, LayoutNode } from "./layoutEngine";
+import type { VisualLayoutRenderer } from "./renderingSeam";
+import { LayoutTree } from "./renderingSeam";
 
 export interface CanvasRendererOptions {
   canvas: HTMLCanvasElement;
@@ -20,6 +22,161 @@ export interface CanvasRendererOptions {
 }
 
 /**
+ * HTML5 Canvas Adapter for the Visual Layout Seam.
+ */
+export class CanvasLayoutRenderer implements VisualLayoutRenderer {
+  constructor(
+    private ctx: CanvasRenderingContext2D,
+    private params: CanvasRendererOptions
+  ) {}
+
+  private setupNodeTransform(node: LayoutNode, drawBody: (renderW: number, renderH: number) => void) {
+    const { ctx, params } = this;
+    const scale = params.scale ?? 1.0;
+    ctx.save();
+    
+    // Scale coordinate placements
+    const cx = node.x * scale;
+    const cy = node.y * scale;
+    ctx.translate(cx, cy);
+
+    if (node.rotation) {
+      ctx.rotate((node.rotation * Math.PI) / 180);
+    }
+
+    let renderW = 0;
+    let renderH = 0;
+
+    if (node.type === "text" || node.type === "textarea") {
+      const fontSize = (node.fontSize ?? 48) * scale;
+      const shopperText = node.text || "";
+      renderW = fontSize * shopperText.length * 0.5;
+      renderH = fontSize;
+    } else {
+      renderW = (node.width ?? 250) * scale;
+      renderH = (node.height ?? 250) * scale;
+    }
+
+    drawBody(renderW, renderH);
+
+    // Draw Selected/Hovered Bounding Boxes & Rotate/Resize Controls
+    const isSelected = node.id === params.activeLayerId;
+    const isHovered = node.id === params.hoveredOptionId;
+
+    if (!params.livePreview && (isSelected || isHovered)) {
+      ctx.strokeStyle = isSelected ? "#008060" : "rgba(0, 128, 96, 0.4)";
+      ctx.lineWidth = isSelected ? 1.5 * scale : 1 * scale;
+      
+      const margin = 6 * scale;
+      ctx.strokeRect(-renderW / 2 - margin, -renderH / 2 - margin, renderW + margin * 2, renderH + margin * 2);
+
+      if (isSelected) {
+        // Draw rotation line hook
+        ctx.beginPath();
+        ctx.moveTo(0, -renderH / 2 - margin);
+        ctx.lineTo(0, -renderH / 2 - 22 * scale);
+        ctx.strokeStyle = "#008060";
+        ctx.lineWidth = 1.5 * scale;
+        ctx.stroke();
+
+        // Draw top rotation circle handle
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#008060";
+        ctx.lineWidth = 1.5 * scale;
+        ctx.beginPath();
+        ctx.arc(0, -renderH / 2 - 22 * scale, 5 * scale, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw four corner resize handle circles
+        const corners = [
+          { x: -renderW / 2 - margin, y: -renderH / 2 - margin },
+          { x: renderW / 2 + margin, y: -renderH / 2 - margin },
+          { x: -renderW / 2 - margin, y: renderH / 2 + margin },
+          { x: renderW / 2 + margin, y: renderH / 2 + margin }
+        ];
+
+        corners.forEach(corner => {
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = "#008060";
+          ctx.lineWidth = 1.5 * scale;
+          ctx.beginPath();
+          ctx.arc(corner.x, corner.y, 5 * scale, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+    }
+
+    ctx.restore();
+  }
+
+  renderText(node: LayoutNode): void {
+    const { ctx, params } = this;
+    const scale = params.scale ?? 1.0;
+    this.setupNodeTransform(node, () => {
+      ctx.fillStyle = node.color || "#000000";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const fontSize = (node.fontSize ?? 48) * scale;
+      ctx.font = `bold ${fontSize}px "${node.fontFamily}", Arial, sans-serif`;
+
+      const shopperText = node.text || "";
+      ctx.fillText(shopperText, 0, 0);
+    });
+  }
+
+  renderClipart(node: LayoutNode): void {
+    const { ctx, params } = this;
+    const scale = params.scale ?? 1.0;
+    this.setupNodeTransform(node, (renderW, renderH) => {
+      const cacheImg = params.loadedLayerImages?.[node.id] || null;
+      if (cacheImg) {
+        ctx.drawImage(cacheImg, -renderW / 2, -renderH / 2, renderW, renderH);
+      } else {
+        // Draw elegant mockup container
+        ctx.fillStyle = "rgba(0, 128, 96, 0.08)";
+        ctx.strokeStyle = "#008060";
+        ctx.lineWidth = 1.5 * scale;
+        ctx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
+        ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
+
+        ctx.fillStyle = "#008060";
+        ctx.font = `bold ${10 * scale}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const clipartVal = node.imageUrl || node.label;
+        ctx.fillText(`🎨 Clipart: ${clipartVal}`, 0, 0);
+      }
+    });
+  }
+
+  renderFile(node: LayoutNode): void {
+    const { ctx, params } = this;
+    const scale = params.scale ?? 1.0;
+    this.setupNodeTransform(node, (renderW, renderH) => {
+      const uploadedImg = params.loadedLayerImages?.[node.id] || params.overlayImage || null;
+      if (uploadedImg) {
+        ctx.drawImage(uploadedImg, -renderW / 2, -renderH / 2, renderW, renderH);
+      } else {
+        ctx.fillStyle = "rgba(44, 62, 80, 0.08)";
+        ctx.strokeStyle = "#2c3e50";
+        ctx.lineWidth = 1.5 * scale;
+        ctx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
+        ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
+
+        ctx.fillStyle = "#2c3e50";
+        ctx.font = `bold ${10 * scale}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(node.imageUrl ? `📸 Loaded: Image` : `📸 Upload: ${node.label}`, 0, 0);
+      }
+    });
+  }
+}
+
+/**
  * High-leverage, unified canvas renderer ensuring pixel-perfect parity between admin customizer mockups
  * and customer storefront previews.
  */
@@ -31,12 +188,8 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
     bgImage,
     mockupView = "Front Mockup View",
     scale = 1.0,
-    activeLayerId = null,
-    hoveredOptionId = null,
     showGrid = false,
-    livePreview = false,
-    loadedLayerImages = {},
-    overlayImage = null
+    livePreview = false
   } = params;
 
   const ctx = canvas.getContext("2d");
@@ -117,128 +270,8 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
   // 3. Compile Layout nodes from unified layout engine
   const nodes = PersonalizationLayoutEngine.compileLayout(options, shopperValues);
 
-  // 4. Render Customization Layers (Bottom to Top)
-  nodes.forEach((node) => {
-    ctx.save();
-    
-    // Scale coordinate placements
-    const cx = node.x * scale;
-    const cy = node.y * scale;
-    ctx.translate(cx, cy);
-
-    if (node.rotation) {
-      ctx.rotate((node.rotation * Math.PI) / 180);
-    }
-
-    let renderW = 0;
-    let renderH = 0;
-
-    if (node.type === "text" || node.type === "textarea") {
-      ctx.fillStyle = node.color || "#000000";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const fontSize = (node.fontSize ?? 48) * scale;
-      ctx.font = `bold ${fontSize}px "${node.fontFamily}", Arial, sans-serif`;
-
-      const shopperText = node.text || "";
-      ctx.fillText(shopperText, 0, 0);
-
-      renderW = fontSize * shopperText.length * 0.5;
-      renderH = fontSize;
-    } else if (node.type === "clipart") {
-      renderW = node.width * scale;
-      renderH = node.height * scale;
-
-      const cacheImg = loadedLayerImages[node.id] || null;
-      if (cacheImg) {
-        ctx.drawImage(cacheImg, -renderW / 2, -renderH / 2, renderW, renderH);
-      } else {
-        // Draw elegant mockup container
-        ctx.fillStyle = "rgba(0, 128, 96, 0.08)";
-        ctx.strokeStyle = "#008060";
-        ctx.lineWidth = 1.5 * scale;
-        ctx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
-        ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
-
-        ctx.fillStyle = "#008060";
-        ctx.font = `bold ${10 * scale}px Arial`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        const clipartVal = node.imageUrl || node.label;
-        ctx.fillText(`🎨 Clipart: ${clipartVal}`, 0, 0);
-      }
-    } else if (node.type === "file") {
-      renderW = node.width * scale;
-      renderH = node.height * scale;
-
-      const uploadedImg = loadedLayerImages[node.id] || overlayImage || null;
-      if (uploadedImg) {
-        ctx.drawImage(uploadedImg, -renderW / 2, -renderH / 2, renderW, renderH);
-      } else {
-        ctx.fillStyle = "rgba(44, 62, 80, 0.08)";
-        ctx.strokeStyle = "#2c3e50";
-        ctx.lineWidth = 1.5 * scale;
-        ctx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
-        ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
-
-        ctx.fillStyle = "#2c3e50";
-        ctx.font = `bold ${10 * scale}px Arial`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(node.imageUrl ? `📸 Loaded: Image` : `📸 Upload: ${node.label}`, 0, 0);
-      }
-    }
-
-    // 5. Draw Selected/Hovered Bounding Boxes & Rotate/Resize Controls
-    const isSelected = node.id === activeLayerId;
-    const isHovered = node.id === hoveredOptionId;
-
-    if (!livePreview && (isSelected || isHovered)) {
-      ctx.strokeStyle = isSelected ? "#008060" : "rgba(0, 128, 96, 0.4)";
-      ctx.lineWidth = isSelected ? 1.5 * scale : 1 * scale;
-      
-      const margin = 6 * scale;
-      ctx.strokeRect(-renderW / 2 - margin, -renderH / 2 - margin, renderW + margin * 2, renderH + margin * 2);
-
-      if (isSelected) {
-        // Draw rotation line hook
-        ctx.beginPath();
-        ctx.moveTo(0, -renderH / 2 - margin);
-        ctx.lineTo(0, -renderH / 2 - 22 * scale);
-        ctx.strokeStyle = "#008060";
-        ctx.lineWidth = 1.5 * scale;
-        ctx.stroke();
-
-        // Draw top rotation circle handle
-        ctx.fillStyle = "#ffffff";
-        ctx.strokeStyle = "#008060";
-        ctx.lineWidth = 1.5 * scale;
-        ctx.beginPath();
-        ctx.arc(0, -renderH / 2 - 22 * scale, 5 * scale, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.stroke();
-
-        // Draw four corner resize handle circles
-        const corners = [
-          { x: -renderW / 2 - margin, y: -renderH / 2 - margin },
-          { x: renderW / 2 + margin, y: -renderH / 2 - margin },
-          { x: -renderW / 2 - margin, y: renderH / 2 + margin },
-          { x: renderW / 2 + margin, y: renderH / 2 + margin }
-        ];
-
-        corners.forEach(corner => {
-          ctx.fillStyle = "#ffffff";
-          ctx.strokeStyle = "#008060";
-          ctx.lineWidth = 1.5 * scale;
-          ctx.beginPath();
-          ctx.arc(corner.x, corner.y, 5 * scale, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.stroke();
-        });
-      }
-    }
-
-    ctx.restore();
-  });
+  // 4. Render Layout Tree via Seam Renderer
+  const layoutTree = new LayoutTree(nodes);
+  const renderer = new CanvasLayoutRenderer(ctx, params);
+  layoutTree.renderAll(renderer);
 }
