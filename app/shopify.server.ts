@@ -32,3 +32,13 @@ export const unauthenticated = shopify.unauthenticated;
 export const login = shopify.login;
 export const registerWebhooks = shopify.registerWebhooks;
 export const sessionStorage = shopify.sessionStorage;
+
+// Recover any stuck pending/processing tasks on server boot
+if (process.env.NODE_ENV !== "test") {
+  import("./utils/printCompiler").then(({ OrderPrintCompiler }) => {
+    OrderPrintCompiler.recoverStuckJobs().catch((err) => {
+      console.error("Error during queue recovery on boot:", err);
+    });
+  });
+}
+

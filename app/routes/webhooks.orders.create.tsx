@@ -6,11 +6,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const result = await OrderPrintCompiler.processWebhook(request);
 
     if (result.success) {
-      console.log(`Successfully compiled print files for order ${result.orderId}. Processed items: ${result.processedItemsCount}`);
-      return new Response("OK", { status: 200 });
+      console.log(`Order ${result.orderId} enqueued for background print file compilation.`);
+      return new Response("Accepted", { status: 202 });
     } else {
-      console.error(`Failed to compile print files for order ${result.orderId}: ${result.error}`);
-      return new Response(result.error || "Compilation failed", { status: 500 });
+      console.error(`Failed to enqueue print compilation: ${result.error}`);
+      return new Response(result.error || "Compilation failed to enqueue", { status: 500 });
     }
   } catch (error: unknown) {
     console.error(`Webhook processing exception:`, error);

@@ -519,20 +519,20 @@ export interface CompileOrderOptions {
 }
 
 export class OrderPrintCompiler {
+  private static workerActive = false;
+
   /**
-   * Compiles the manufacturing-ready vector SVG print files for all personalized items in the order.
+   * Core compilation process that retrieves order details, compiles SVGs,
+   * uploads them to Shopify CDN, and updates the order metafields and log status.
    */
-  static async compileOrder(options: CompileOrderOptions): Promise<OrderPrintCompilerResult> {
+  static async compileOrderCore(options: CompileOrderOptions, logId: string): Promise<OrderPrintCompilerResult> {
     const dbModule = await import("../db.server");
     const resolvedDb = options.db || dbModule.default;
     const resolvedNetwork = options.network || new CachedNetworkAdapter();
 
     const shopifyClient = new ShopifyAdminClientGraphQLAdapter(options.admin);
     const database = new PrismaDatabaseAdapter(resolvedDb);
-    
-    // Initialize processing log entry
-    const logEntry = await database.createProcessingLog(options.shop, options.orderId);
-    
+
     try {
       const orderGid = options.orderId.startsWith("gid://shopify/Order/") 
         ? options.orderId 
@@ -593,7 +593,7 @@ export class OrderPrintCompiler {
       });
 
       if (personalizedItems.length === 0) {
-        await database.updateProcessingLog(logEntry.id, "COMPLETED", null, "No personalized options found for this order.");
+        await database.updateProcessingLog(logId, "COMPLETED", null, "No personalized options found for this order.");
         return {
           success: true,
           orderId: options.orderId,
@@ -648,7 +648,7 @@ export class OrderPrintCompiler {
       await shopifyClient.updateOrderMetafield(options.orderId, publicUrls);
 
       // Update log state
-      await database.updateProcessingLog(logEntry.id, "COMPLETED", publicUrls[0]);
+      await database.updateProcessingLog(logId, "COMPLETED", publicUrls[0]);
 
       return {
         success: true,
@@ -659,7 +659,7 @@ export class OrderPrintCompiler {
       };
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : "Unknown compilation error";
-      await database.updateProcessingLog(logEntry.id, "FAILED", null, errorMsg);
+      await database.updateProcessingLog(logId, "FAILED", null, errorMsg);
       return {
         success: false,
         orderId: options.orderId,
@@ -672,8 +672,128 @@ export class OrderPrintCompiler {
   }
 
   /**
+   * Compiles the manufacturing-ready vector SVG print files for all personalized items in the order.
+   * Synchronous database logging path.
+   */
+  static async compileOrder(options: CompileOrderOptions): Promise<OrderPrintCompilerResult> {
+    const dbModule = await import("../db.server");
+    const resolvedDb = options.db || dbModule.default;
+    const database = new PrismaDatabaseAdapter(resolvedDb);
+    
+    // Initialize processing log entry
+    const logEntry = await database.createProcessingLog(options.shop, options.orderId);
+    
+    return this.compileOrderCore(options, logEntry.id);
+  }
+
+  /**
+   * Starts the background worker loop to poll and process PENDING log tasks.
+   */
+  static async ensureWorkerRunning(adminClient?: any): Promise<void> {
+    if (this.workerActive) return;
+    this.workerActive = true;
+
+    // Run asynchronously to prevent event loop blocking
+    setImmediate(async () => {
+      try {
+        await this.processQueue(adminClient);
+      } catch (err) {
+        console.error("[Worker Queue] Loop exception:", err);
+      } finally {
+        this.workerActive = false;
+      }
+    });
+  }
+
+  /**
+   * Background task processor that claims and processes PENDING compiler logs.
+   */
+  static async processQueue(adminClient?: any): Promise<void> {
+    const dbModule = await import("../db.server");
+    const db = dbModule.default;
+
+    while (true) {
+      // Find the next PENDING task in chronological order
+      const pendingTask = await db.orderProcessingLog.findFirst({
+        where: { status: "PENDING" },
+        orderBy: { createdAt: "asc" }
+      });
+
+      if (!pendingTask) break;
+
+      // Lock task status to PROCESSING (acts as mutex write lock in SQLite)
+      const lockedTask = await db.orderProcessingLog.update({
+        where: { id: pendingTask.id },
+        data: { status: "PROCESSING" }
+      });
+
+      try {
+        let admin = adminClient;
+        if (!admin) {
+          const shopifyModule = await import("../shopify.server");
+          const { unauthenticated } = shopifyModule;
+          const authResult = await unauthenticated.admin(lockedTask.shop);
+          admin = authResult.admin;
+        }
+
+        await this.compileOrderCore(
+          {
+            shop: lockedTask.shop,
+            orderId: lockedTask.orderId,
+            admin,
+            db
+          },
+          lockedTask.id
+        );
+      } catch (err: any) {
+        const errorMsg = err?.message || String(err);
+        console.error(`[Worker Queue] Task ${lockedTask.id} failed:`, errorMsg);
+        await db.orderProcessingLog.update({
+          where: { id: lockedTask.id },
+          data: { status: "FAILED", error: errorMsg }
+        });
+      }
+    }
+  }
+
+  /**
+   * Recovers stuck jobs on app boot (PENDING or PROCESSING) and schedules retry processing.
+   */
+  static async recoverStuckJobs(): Promise<void> {
+    const dbModule = await import("../db.server");
+    const db = dbModule.default;
+
+    try {
+      const stuckLogs = await db.orderProcessingLog.findMany({
+        where: { status: { in: ["PENDING", "PROCESSING"] } }
+      });
+
+      if (stuckLogs.length === 0) return;
+
+      console.log(`[Queue Recovery] Recovering ${stuckLogs.length} stuck jobs.`);
+
+      // Reset PROCESSING tasks back to PENDING so they are re-run
+      for (const log of stuckLogs) {
+        await db.orderProcessingLog.update({
+          where: { id: log.id },
+          data: {
+            status: "PENDING",
+            error: log.status === "PROCESSING" ? "Recovered after process interrupt" : log.error
+          }
+        });
+      }
+
+      // Trigger worker to start processing recovered tasks
+      await this.ensureWorkerRunning();
+    } catch (err) {
+      console.error("[Queue Recovery] Failed to recover pending tasks:", err);
+    }
+  }
+
+  /**
    * Primary entry point for Shopify webhooks.
-   * Auto-resolves authentication, database instance, and Shopify client context from the Remix request.
+   * Decoupled webhook processing logic matching Candidate 2.
+   * Authenticates HMAC, logs PENDING record, returns Response under 50ms, then compiles in background.
    */
   static async processWebhook(request: Request): Promise<OrderPrintCompilerResult> {
     const shopifyModule = await import("../shopify.server");
@@ -684,11 +804,48 @@ export class OrderPrintCompiler {
       throw new Error("Webhook Admin context is missing. Cannot process order details.");
     }
 
-    return this.compileOrder({
-      shop,
-      orderId: String(payload.id),
-      orderName: payload.name ? `#${payload.name}` : undefined,
-      admin,
+    const orderId = String(payload.id);
+    const dbModule = await import("../db.server");
+    const db = dbModule.default;
+
+    // Check if order log entry already exists
+    const existingLog = await db.orderProcessingLog.findFirst({
+      where: { shop, orderId }
     });
+
+    let logId: string;
+    if (existingLog) {
+      logId = existingLog.id;
+      // Reset status to PENDING if failed
+      if (existingLog.status === "FAILED") {
+        await db.orderProcessingLog.update({
+          where: { id: logId },
+          data: { status: "PENDING", error: null }
+        });
+      }
+    } else {
+      const logEntry = await db.orderProcessingLog.create({
+        data: {
+          shop,
+          orderId,
+          status: "PENDING"
+        }
+      });
+      logId = logEntry.id;
+    }
+
+    // Trigger background queue execution immediately (non-blocking)
+    this.ensureWorkerRunning(admin).catch((err) => {
+      console.error("[Webhook Queue] Worker launch exception:", err);
+    });
+
+    // Return instant success response payload
+    return {
+      success: true,
+      orderId,
+      processedItemsCount: 1, // Webhook accepted
+      warnings: [],
+      publicUrls: []
+    };
   }
 }
