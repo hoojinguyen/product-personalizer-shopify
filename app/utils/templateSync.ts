@@ -318,6 +318,7 @@ export class TemplateDownstreamSynchronizer {
     let templateName = input.name || "";
     let templateOptions = input.options || "";
     let templateDescription = input.description || "";
+    let previousLinkedIds: string[] = [];
 
     // 1. Create or update Template in local SQLite DB
     if (templateId) {
@@ -332,12 +333,30 @@ export class TemplateDownstreamSynchronizer {
       templateOptions = input.options || existing.options;
       templateDescription = input.description !== undefined ? (input.description || "") : (existing.description || "");
 
+      // Read previous linked IDs from the existing DB options field
+      try {
+        const parsedExisting = JSON.parse(existing.options || "{}");
+        if (Array.isArray(parsedExisting._linkedProductIds)) {
+          previousLinkedIds = parsedExisting._linkedProductIds;
+        }
+      } catch (e) {
+        // Ignore JSON parse error on legacy config formats
+      }
+
+      // Inject new target list into options JSON string
+      let parsedOptions: any = {};
+      try {
+        parsedOptions = JSON.parse(templateOptions || "{}");
+      } catch (e) {}
+      parsedOptions._linkedProductIds = targetProductIds;
+      const updatedTemplateOptions = JSON.stringify(parsedOptions);
+
       await this.dbClient.template.update({
         where: { id: templateId, shop },
         data: {
           name: templateName,
           description: templateDescription,
-          options: templateOptions,
+          options: updatedTemplateOptions,
         },
       });
     } else {
@@ -347,39 +366,36 @@ export class TemplateDownstreamSynchronizer {
       if (!input.options) {
         throw new Error("Template options are required for creation");
       }
+
+      // Inject new target list into options JSON string
+      let parsedOptions: any = {};
+      try {
+        parsedOptions = JSON.parse(templateOptions || "{}");
+      } catch (e) {}
+      parsedOptions._linkedProductIds = targetProductIds;
+      const updatedTemplateOptions = JSON.stringify(parsedOptions);
+
       const created = await this.dbClient.template.create({
         data: {
           shop,
           name: templateName,
           description: templateDescription,
-          options: templateOptions,
+          options: updatedTemplateOptions,
         },
       });
       templateId = created.id;
     }
 
-    // 2. Fetch current storefront products to detect active configurations
-    const products = await this.shopifyPort.fetchProducts();
+    // Compute products to unlink
+    const toUnlink = previousLinkedIds.filter((id) => !targetProductIds.includes(id));
 
-    // Compute currently linked products
-    const currentlyLinkedIds: string[] = [];
-    products.forEach((p) => {
-      if (p.configValue) {
-        try {
-          const config = JSON.parse(p.configValue);
-          if (config.templateId === templateId) {
-            currentlyLinkedIds.push(p.id);
-          }
-        } catch (e) {
-          // Ignore parse errors on invalid metafield formats
-        }
-      }
-    });
+    // 2. Assemble storefront metafield mutation payloads
+    // Parse raw options config (stripping our private link fields from the public storefront config)
+    let parsedOptions: any = {};
+    try {
+      parsedOptions = JSON.parse(templateOptions || "{}");
+    } catch (e) {}
 
-    const toUnlink = currentlyLinkedIds.filter((id) => !targetProductIds.includes(id));
-
-    // 3. Assemble metafield mutation payloads
-    const parsedOptions = JSON.parse(templateOptions || "{}");
     const personalizationConfig = {
       enabled: true,
       templateId: templateId,
@@ -415,7 +431,7 @@ export class TemplateDownstreamSynchronizer {
       });
     });
 
-    // 4. Publish mutations in bulk
+    // 3. Publish mutations in bulk
     const errors = await this.shopifyPort.publishMetafields(payloads);
 
     return {
@@ -429,23 +445,22 @@ export class TemplateDownstreamSynchronizer {
   }
 
   async unsync(shop: string, templateId: string): Promise<Omit<SyncResult, "templateId" | "templateName">> {
-    const products = await this.shopifyPort.fetchProducts();
-
-    const currentlyLinkedIds: string[] = [];
-    products.forEach((p) => {
-      if (p.configValue) {
-        try {
-          const config = JSON.parse(p.configValue);
-          if (config.templateId === templateId) {
-            currentlyLinkedIds.push(p.id);
-          }
-        } catch (e) {
-          // Ignore
-        }
-      }
+    // Read the template linkage list from database
+    const existing = await this.dbClient.template.findFirst({
+      where: { id: templateId, shop },
     });
 
-    const payloads: ShopifyMetafieldPayload[] = currentlyLinkedIds.map((productId) => ({
+    let linkedProductIds: string[] = [];
+    if (existing) {
+      try {
+        const parsed = JSON.parse(existing.options || "{}");
+        if (Array.isArray(parsed._linkedProductIds)) {
+          linkedProductIds = parsed._linkedProductIds;
+        }
+      } catch (e) {}
+    }
+
+    const payloads: ShopifyMetafieldPayload[] = linkedProductIds.map((productId) => ({
       ownerId: productId,
       namespace: "app",
       key: "customization_config",
@@ -462,7 +477,7 @@ export class TemplateDownstreamSynchronizer {
     return {
       success: errors.length === 0,
       linkedCount: 0,
-      unlinkedCount: currentlyLinkedIds.length,
+      unlinkedCount: linkedProductIds.length,
       errors,
     };
   }
