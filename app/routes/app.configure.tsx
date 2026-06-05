@@ -66,7 +66,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             storefront: PUBLIC_READ
           }
         }) {
-          metafieldDefinition {
+          createdDefinition {
             id
           }
           userErrors {
