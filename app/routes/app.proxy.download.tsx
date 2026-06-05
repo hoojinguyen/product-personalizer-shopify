@@ -1,6 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { FulfillmentPackagePackager } from "../utils/fulfillmentPackager";
-import db from "../db.server";
+import { OrderPersonalizationCompiler } from "../utils/orderPersonalizationCompiler";
 import { authenticate } from "../shopify.server";
 
 // App Proxy dynamic manufacturing ZIP downloader matching ADR 0004
@@ -35,13 +34,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   try {
-    const packager = new FulfillmentPackagePackager();
-    const result = await packager.compile({
-      admin: adminClient,
-      orderId,
-      shop,
-      db,
-    });
+    const result = await OrderPersonalizationCompiler.packageFulfillment(
+      { shop: shop || "", orderId },
+      { adminClient }
+    );
 
     return new Response(result.stream as any, {
       headers: {

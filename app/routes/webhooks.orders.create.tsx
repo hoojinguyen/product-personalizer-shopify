@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { OrderPrintCompiler } from "../utils/printCompiler";
+import { OrderPersonalizationCompiler } from "../utils/orderPersonalizationCompiler";
 import db from "../db.server";
 import { authenticate } from "../shopify.server";
 
@@ -12,7 +12,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const orderId = String(payload.id);
-    const result = await OrderPrintCompiler.enqueueWebhookJob({
+    const result = await OrderPersonalizationCompiler.enqueueWebhookJob({
       shop,
       orderId,
       adminClient: admin,
