@@ -2,7 +2,7 @@ import { useLoaderData, useFetcher } from "react-router";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { TemplateDownstreamSynchronizer, ShopifyAdminGraphQLAdapter } from "../utils/templateSync";
+import { PersonalizationConfigSync } from "../utils/templateSync";
 import { useState, useEffect, useRef } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
@@ -48,14 +48,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = session.shop;
-
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
-
-  const shopifyAdapter = new ShopifyAdminGraphQLAdapter(admin);
-  const synchronizer = new TemplateDownstreamSynchronizer(db, shopifyAdapter);
 
   if (intent === "save_template") {
     const id = (formData.get("id") as string) || undefined;
@@ -70,14 +64,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {}
 
     try {
-      const result = await synchronizer.sync(
-        shop,
+      const result = await PersonalizationConfigSync.syncTemplate(
+        { request },
         { id, name, description, options: optionsJson },
         productLinks
       );
 
       const template = await db.template.findFirst({
-        where: { id: result.templateId, shop },
+        where: { id: result.templateId },
       });
 
       return { success: result.success, template, userErrors: result.errors };
@@ -87,6 +81,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (intent === "duplicate_template") {
+    const { session } = await authenticate.admin(request);
+    const shop = session.shop;
     const id = formData.get("id") as string;
     const sourceTemplate = await db.template.findFirst({
       where: { id, shop }
@@ -116,8 +112,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } catch (e) {}
 
     try {
-      const result = await synchronizer.sync(
-        shop,
+      const result = await PersonalizationConfigSync.syncTemplate(
+        { request },
         { id: templateId },
         productLinks
       );
@@ -130,7 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (intent === "delete_template") {
     const id = formData.get("id") as string;
     try {
-      const result = await synchronizer.unsync(shop, id);
+      const result = await PersonalizationConfigSync.unsyncTemplate({ request }, id);
       return { success: result.success, deleted: id, userErrors: result.errors };
     } catch (error: any) {
       return { success: false, error: error.message };

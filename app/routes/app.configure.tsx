@@ -4,6 +4,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { PersonalizationConfigSync } from "../utils/templateSync";
 
 // Sub-components & shared utilities
 import { ProductCatalogTable } from "../components/personalizer/ProductCatalogTable";
@@ -91,38 +92,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 // Action: Save customization configuration
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
   
   const bulkUpdatesJson = formData.get("bulkUpdates") as string;
   if (bulkUpdatesJson) {
     try {
       const metafields = JSON.parse(bulkUpdatesJson);
-      const response = await admin.graphql(
-        `#graphql
-        mutation setProductMetafields($metafields: [MetafieldsSetInput!]!) {
-          metafieldsSet(metafields: $metafields) {
-            metafields {
-              id
-              value
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }`,
-        {
-          variables: {
-            metafields
-          }
-        }
-      );
-      const responseJson = await response.json();
-      return { ok: true, errors: responseJson.data?.metafieldsSet?.userErrors || [] };
-    } catch (e) {
+      const errors = await PersonalizationConfigSync.publishRawMetafields({ request }, metafields);
+      return { ok: errors.length === 0, errors };
+    } catch (e: any) {
       console.error("Error executing bulk metafieldsSet", e);
-      return { ok: false, errors: [{ message: (e as Error).message || "Bulk update failed" }] };
+      return { ok: false, errors: [{ message: e.message || "Bulk update failed" }] };
     }
   }
 
@@ -138,43 +118,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.error("Error parsing options JSON in action", e);
   }
 
-  const config = {
-    enabled,
-    options,
-    upchargeVariantId: upchargeVariantId || ""
-  };
-
-  const response = await admin.graphql(
-    `#graphql
-    mutation setProductMetafield($metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(metafields: $metafields) {
-        metafields {
-          id
-          value
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`,
-    {
-      variables: {
-        metafields: [
-          {
-            ownerId: productId,
-            namespace: "app",
-            key: "customization_config",
-            type: "json",
-            value: JSON.stringify(config)
-          }
-        ]
-      }
-    }
-  );
-
-  const responseJson = await response.json();
-  return { ok: true, errors: responseJson.data?.metafieldsSet?.userErrors || [] };
+  try {
+    const result = await PersonalizationConfigSync.syncProductConfig(
+      { request },
+      productId,
+      { enabled, options, upchargeVariantId }
+    );
+    return { ok: result.success, errors: result.errors };
+  } catch (e: any) {
+    console.error("Error syncing product config", e);
+    return { ok: false, errors: [{ message: e.message || "Sync product config failed" }] };
+  }
 };
 
 export default function ConfigureProductOptions() {
