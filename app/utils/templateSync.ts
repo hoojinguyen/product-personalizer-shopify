@@ -168,6 +168,32 @@ async function resolveContext(args: ContextArgs) {
  */
 export class PersonalizationConfigSync {
   /**
+   * Builds a Shopify metafield payload for a product's personalization config.
+   */
+  private static buildConfigPayload(
+    productId: string,
+    config: Partial<PersonalizationConfigInput>
+  ): ShopifyMetafieldPayload {
+    return {
+      ownerId: productId,
+      namespace: "app",
+      key: "customization_config",
+      type: "json",
+      value: JSON.stringify({
+        enabled: config.enabled ?? true,
+        templateId: config.templateId,
+        layoutMode: config.layoutMode || "stacked",
+        brandColor: config.brandColor,
+        buttonColor: config.buttonColor,
+        buttonTextColor: config.buttonTextColor,
+        heading: config.heading,
+        options: config.options || [],
+        upchargeVariantId: config.upchargeVariantId || "",
+      }),
+    };
+  }
+
+  /**
    * Syncs template state in DB and propagates Personalization Config downstream to target products.
    * Auto-resolves dependencies from ContextArgs.
    */
@@ -208,61 +234,8 @@ export class PersonalizationConfigSync {
     const { admin } = await resolveContext(context);
     const shopifyAdapter = new ShopifyAdminGraphQLAdapter(admin);
 
-    const payload: ShopifyMetafieldPayload = {
-      ownerId: productId,
-      namespace: "app",
-      key: "customization_config",
-      type: "json",
-      value: JSON.stringify({
-        enabled: config.enabled ?? true,
-        templateId: config.templateId,
-        layoutMode: config.layoutMode || "stacked",
-        brandColor: config.brandColor,
-        buttonColor: config.buttonColor,
-        buttonTextColor: config.buttonTextColor,
-        heading: config.heading,
-        options: config.options || [],
-        upchargeVariantId: config.upchargeVariantId || "",
-      }),
-    };
-
+    const payload = PersonalizationConfigSync.buildConfigPayload(productId, config);
     const errors = await shopifyAdapter.publishMetafields([payload]);
-    return {
-      success: errors.length === 0,
-      errors,
-    };
-  }
-
-  /**
-   * Direct-syncs personalization configurations for multiple products in bulk.
-   * Auto-resolves dependencies from ContextArgs.
-   */
-  static async syncProductConfigsBulk(
-    context: ContextArgs,
-    updates: Array<{ productId: string; config: Partial<PersonalizationConfigInput> }>
-  ): Promise<{ success: boolean; errors: SyncProductError[] }> {
-    const { admin } = await resolveContext(context);
-    const shopifyAdapter = new ShopifyAdminGraphQLAdapter(admin);
-
-    const payloads: ShopifyMetafieldPayload[] = updates.map((update) => ({
-      ownerId: update.productId,
-      namespace: "app",
-      key: "customization_config",
-      type: "json",
-      value: JSON.stringify({
-        enabled: update.config.enabled ?? true,
-        templateId: update.config.templateId,
-        layoutMode: update.config.layoutMode || "stacked",
-        brandColor: update.config.brandColor,
-        buttonColor: update.config.buttonColor,
-        buttonTextColor: update.config.buttonTextColor,
-        heading: update.config.heading,
-        options: update.config.options || [],
-        upchargeVariantId: update.config.upchargeVariantId || "",
-      }),
-    }));
-
-    const errors = await shopifyAdapter.publishMetafields(payloads);
     return {
       success: errors.length === 0,
       errors,
@@ -287,7 +260,7 @@ export class PersonalizationConfigSync {
  * Classic class keeping core business logic. Hides SQLite queries and metafield calculations.
  * Used internally by PersonalizationConfigSync, or directly if manually injecting dependencies.
  */
-export class TemplateDownstreamSynchronizer {
+class TemplateDownstreamSynchronizer {
   constructor(private dbClient: typeof db, private shopifyPort: ShopifyAdminPort) {}
 
   async sync(
