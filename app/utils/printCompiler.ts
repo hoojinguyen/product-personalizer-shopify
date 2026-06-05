@@ -1,5 +1,5 @@
-import { CustomizationOption } from "./configEngine";
-import { PersonalizationLayoutEngine, LayoutNode } from "./layoutEngine";
+import { PersonalizationConfig } from "./configEngine";
+import type { CustomizationOption, LayoutNode } from "./configEngine";
 import { ShopifyFilePublisher } from "./shopifyFilePublisher";
 import { VisualLayoutRenderer, LayoutTree } from "./renderingSeam";
 import fs from "fs";
@@ -462,10 +462,11 @@ export class PrintFileCompilerImpl {
     const svgHeight = 800;
 
     // 3. Compile Layout Tree
-    const nodes = PersonalizationLayoutEngine.compileLayout(configOptions, shopperValues);
+    const personalizationConfig = new PersonalizationConfig(configOptions);
+    const resolved = personalizationConfig.resolve(shopperValues);
 
     // 4. Render Layout Nodes to SVG via Seam Renderer
-    const layoutTree = new LayoutTree(nodes);
+    const layoutTree = new LayoutTree(resolved.layoutNodes);
     const svgRenderer = new SvgLayoutRenderer(shop, database, network, warnings);
     await layoutTree.renderAllAsync(svgRenderer);
 

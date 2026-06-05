@@ -1,5 +1,6 @@
 import type { CustomizationOption } from "./configEngine";
-import { PersonalizationLayoutEngine, LayoutNode } from "./layoutEngine";
+import { PersonalizationConfig } from "./configEngine";
+import type { LayoutNode } from "./configEngine";
 import type { VisualLayoutRenderer } from "./renderingSeam";
 import { LayoutTree } from "./renderingSeam";
 
@@ -267,11 +268,12 @@ export function drawPersonalizerCanvas(params: CanvasRendererOptions): void {
     }
   }
 
-  // 3. Compile Layout nodes from unified layout engine
-  const nodes = PersonalizationLayoutEngine.compileLayout(options, shopperValues);
+  // 3. Compile Layout nodes from resolved customizer configuration
+  const config = new PersonalizationConfig(options);
+  const resolved = config.resolve(shopperValues);
 
   // 4. Render Layout Tree via Seam Renderer
-  const layoutTree = new LayoutTree(nodes);
+  const layoutTree = new LayoutTree(resolved.layoutNodes);
   const renderer = new CanvasLayoutRenderer(ctx, params);
   layoutTree.renderAll(renderer);
 }

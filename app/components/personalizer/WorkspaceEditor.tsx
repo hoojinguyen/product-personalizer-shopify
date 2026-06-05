@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { CustomizationOption, isOptionVisible, calculateTotalUpcharges } from "../../utils/configEngine";
+import { CustomizationOption, PersonalizationConfig } from "../../utils/configEngine";
 import { drawPersonalizerCanvas } from "../../utils/canvasRenderer";
 import { CloseIcon } from "./Icons";
 
@@ -22,6 +22,8 @@ export function WorkspaceEditor({
   const [enabled, setEnabled] = useState(false);
   const [options, setOptions] = useState<CustomizationOption[]>([]);
   const [upchargeVariantId, setUpchargeVariantId] = useState("");
+
+  const config = new PersonalizationConfig(options);
 
   // Dirty flag, Warning modal & Horizontal tab states
   const [isDirty, setIsDirty] = useState(false);
@@ -294,7 +296,7 @@ export function WorkspaceEditor({
 
     if (activeLayerId) {
       const opt = options.find(o => o.id === activeLayerId);
-      if (opt && isOptionVisible(opt, shopperValues, options)) {
+      if (opt && config.isOptionVisible(opt, shopperValues)) {
         const cx = opt.canvasX ?? 400;
         const cy = opt.canvasY ?? 400;
         
@@ -368,7 +370,7 @@ export function WorkspaceEditor({
     // Layer body selection checking
     for (let i = options.length - 1; i >= 0; i--) {
       const opt = options[i];
-      if (!isOptionVisible(opt, shopperValues, options)) continue;
+      if (!config.isOptionVisible(opt, shopperValues)) continue;
       
       const cx = opt.canvasX ?? 400;
       const cy = opt.canvasY ?? 400;
@@ -463,7 +465,7 @@ export function WorkspaceEditor({
       let hoverId = null;
       for (let i = options.length - 1; i >= 0; i--) {
         const o = options[i];
-        if (!isOptionVisible(o, shopperValues, options)) continue;
+        if (!config.isOptionVisible(o, shopperValues)) continue;
         
         const cx = o.canvasX ?? 400;
         const cy = o.canvasY ?? 400;
@@ -1477,7 +1479,7 @@ export function WorkspaceEditor({
             {/* Logical coordinate overlays in workspace */}
             {rightSidebarMode === "designer" && activeLayerId && (() => {
               const opt = options.find(o => o.id === activeLayerId);
-              if (!opt || !isOptionVisible(opt, shopperValues, options)) return null;
+              if (!opt || !config.isOptionVisible(opt, shopperValues)) return null;
               const isText = opt.type === "text" || opt.type === "textarea";
               return (
                 <div className="coordinates-overlay">
@@ -1838,7 +1840,7 @@ export function WorkspaceEditor({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <h3 style={{ fontSize: "14px", fontWeight: 600, margin: 0 }}>Widget Emulator</h3>
                   <span className="upcharge-pill">
-                    + ${calculateTotalUpcharges(options, shopperValues).toFixed(2)} Fee
+                    + ${config.calculateTotalUpcharges(shopperValues).toFixed(2)} Fee
                   </span>
                 </div>
 
@@ -1846,7 +1848,7 @@ export function WorkspaceEditor({
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
                   {options.map((opt) => {
-                    if (!isOptionVisible(opt, shopperValues, options)) return null;
+                    if (!config.isOptionVisible(opt, shopperValues)) return null;
 
                     return (
                       <div key={opt.id} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

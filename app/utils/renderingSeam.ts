@@ -1,4 +1,4 @@
-import type { LayoutNode } from "./layoutEngine";
+import type { LayoutNode } from "./configEngine";
 
 /**
  * Port interface for visual layout rendering.

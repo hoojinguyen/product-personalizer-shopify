@@ -32,6 +32,29 @@ export interface CustomizationOption {
   canvasFontSize?: number;
 }
 
+export interface LayoutNode {
+  id: string;
+  type: "text" | "textarea" | "select" | "swatch" | "file" | "checkbox" | "clipart" | "font" | "number" | "info";
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  color?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  text?: string;
+  imageUrl?: string;
+}
+
+export interface ResolvedCustomizer {
+  visibleOptions: CustomizationOption[];
+  resolvedValues: Record<string, unknown>;
+  totalUpcharge: number;
+  layoutNodes: LayoutNode[];
+}
+
 /**
  * Core Personalization Configuration class model.
  * Hides all option parsing, default fallbacks, visibility rules, and upcharge calculations.
@@ -77,6 +100,106 @@ export class PersonalizationConfig {
     } catch (e) {
       return new PersonalizationConfig([defaultOption], "", false);
     }
+  }
+
+  /**
+   * Resolves options, values, upcharges, and visual tree layout nodes in a single pass.
+   */
+  resolve(shopperValues: Record<string, unknown>): ResolvedCustomizer {
+    const visibleOptions = this.getVisibleOptions(shopperValues);
+    const resolvedValues: Record<string, unknown> = {};
+
+    visibleOptions.forEach((opt) => {
+      resolvedValues[opt.id] = this.resolveOptionValue(opt, shopperValues);
+    });
+
+    const totalUpcharge = this.calculateTotalUpcharges(shopperValues);
+    const layoutNodes: LayoutNode[] = [];
+
+    visibleOptions.forEach((opt) => {
+      const val = resolvedValues[opt.id];
+      const cx = opt.canvasX ?? 400;
+      const cy = opt.canvasY ?? 400;
+      const rot = opt.canvasRotation ?? 0;
+
+      if (opt.type === "text" || opt.type === "textarea") {
+        // Resolve active typography style font & color
+        let activeFont = "Arial";
+        let activeColor = "#000000";
+
+        // Find font configuration
+        const fontOption = this.options.find((o) => o.type === "font");
+        if (fontOption) {
+          const fVal = this.resolveOptionValue(fontOption, shopperValues);
+          if (fVal) activeFont = String(fVal);
+        } else {
+          // Fallback: search by label
+          const labelFontOpt = this.options.find(
+            (o) => o.label.toLowerCase().includes("font") || o.label.toLowerCase().includes("style")
+          );
+          if (labelFontOpt) {
+            const fVal = this.resolveOptionValue(labelFontOpt, shopperValues);
+            if (fVal) activeFont = String(fVal);
+          }
+        }
+
+        // Find color configuration
+        const swatchOption = this.options.find((o) => o.type === "swatch");
+        if (swatchOption) {
+          const sVal = this.resolveOptionValue(swatchOption, shopperValues);
+          if (sVal) activeColor = String(sVal);
+        } else {
+          // Fallback: check label containing color
+          const labelColorOpt = this.options.find((o) => o.label.toLowerCase().includes("color"));
+          if (labelColorOpt) {
+            const sVal = this.resolveOptionValue(labelColorOpt, shopperValues);
+            if (sVal) activeColor = String(sVal);
+          } else if (shopperValues[`${opt.id}_color`]) {
+            activeColor = String(shopperValues[`${opt.id}_color`]);
+          } else if (opt.choices) {
+            activeColor = opt.choices.split(",")[0]?.trim() || "#000000";
+          }
+        }
+
+        let shopperText = val !== undefined && val !== null && val !== "" ? String(val) : (opt.defaultValue !== undefined ? opt.defaultValue : opt.label);
+        if (opt.caseConstraint === "uppercase") shopperText = shopperText.toUpperCase();
+        if (opt.caseConstraint === "lowercase") shopperText = shopperText.toLowerCase();
+
+        layoutNodes.push({
+          id: opt.id,
+          type: opt.type,
+          label: opt.label,
+          x: cx,
+          y: cy,
+          width: 0, // Calculated dynamically by rendering adapters
+          height: opt.canvasFontSize ?? 48,
+          rotation: rot,
+          color: activeColor,
+          fontFamily: activeFont,
+          fontSize: opt.canvasFontSize ?? 48,
+          text: shopperText,
+        });
+      } else if (opt.type === "clipart" || opt.type === "file") {
+        layoutNodes.push({
+          id: opt.id,
+          type: opt.type,
+          label: opt.label,
+          x: cx,
+          y: cy,
+          width: opt.canvasWidth ?? 250,
+          height: opt.canvasHeight ?? 250,
+          rotation: rot,
+          imageUrl: val ? String(val) : undefined,
+        });
+      }
+    });
+
+    return {
+      visibleOptions,
+      resolvedValues,
+      totalUpcharge,
+      layoutNodes,
+    };
   }
 
   /**
@@ -135,7 +258,7 @@ export class PersonalizationConfig {
     let sum = 0;
     this.options.forEach(opt => {
       if (this.isOptionVisible(opt, shopperValues) && opt.priceUpcharge > 0) {
-        const val = shopperValues[opt.id];
+        const val = shopperValues[opt.id] !== undefined ? shopperValues[opt.id] : shopperValues[opt.label];
         if (val !== undefined && val !== null && val !== "") {
           if (opt.type === "checkbox") {
             const stringVal = String(val).toLowerCase();
@@ -162,56 +285,4 @@ export class PersonalizationConfig {
   getVisibleOptions(shopperValues: Record<string, any>): CustomizationOption[] {
     return this.options.filter(opt => this.isOptionVisible(opt, shopperValues));
   }
-}
-
-/**
- * Resolves an option value from the shopper values dictionary, checking by ID first and falling back to Label.
- * @deprecated Use PersonalizationConfig instance method instead.
- */
-export function resolveOptionValue(
-  opt: CustomizationOption,
-  values: Record<string, any>
-): unknown {
-  const config = new PersonalizationConfig([]);
-  return config.resolveOptionValue(opt, values);
-}
-
-/**
- * Evaluates conditional visibility for a customization option based on current selections.
- * @deprecated Use PersonalizationConfig instance method instead.
- */
-export function isOptionVisible(
-  opt: CustomizationOption,
-  shopperValues: Record<string, any>,
-  options?: CustomizationOption[]
-): boolean {
-  const config = new PersonalizationConfig(options || []);
-  return config.isOptionVisible(opt, shopperValues);
-}
-
-/**
- * Calculates the total upcharges for all currently visible options based on selections.
- * @deprecated Use PersonalizationConfig instance method instead.
- */
-export function calculateTotalUpcharges(
-  options: CustomizationOption[],
-  shopperValues: Record<string, any>
-): number {
-  const config = new PersonalizationConfig(options);
-  return config.calculateTotalUpcharges(shopperValues);
-}
-
-/**
- * Safely resolves and parses a product's metafield configuration, falling back to a self-healing default.
- * @deprecated Use PersonalizationConfig.fromMetafield instead.
- */
-export function resolveConfigDefaults(
-  metafieldValue: string | undefined | null
-): { enabled: boolean; options: CustomizationOption[]; upchargeVariantId: string } {
-  const config = PersonalizationConfig.fromMetafield(metafieldValue);
-  return {
-    enabled: config.enabled,
-    options: config.options,
-    upchargeVariantId: config.upchargeVariantId
-  };
 }

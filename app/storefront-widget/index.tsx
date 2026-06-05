@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import { 
   CustomizationOption, 
-  isOptionVisible, 
-  calculateTotalUpcharges 
+  PersonalizationConfig 
 } from "../utils/configEngine";
 import { drawPersonalizerCanvas } from "../utils/canvasRenderer";
 
@@ -17,6 +16,7 @@ interface CustomizerConfig {
   options: CustomizationOption[];
   customCSS?: string;
   customJS?: string;
+  upchargeVariantId?: string;
 }
 
 export function StorefrontCustomizer({
@@ -45,6 +45,9 @@ export function StorefrontCustomizer({
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadProgressMsg, setUploadProgressMsg] = useState<string>("");
+
+  const personalizationConfig = new PersonalizationConfig(options, config.upchargeVariantId, config.enabled);
+  const resolved = personalizationConfig.resolve(fieldValues);
 
   // Canvas Reference
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -167,12 +170,6 @@ export function StorefrontCustomizer({
     }
   };
 
-  const isStorefrontOptionVisible = (opt: CustomizationOption) => {
-    return isOptionVisible(opt, fieldValues, options);
-  };
-
-  const visibleOptions = options.filter(isStorefrontOptionVisible);
-
   // Live Multi-Layer Canvas Rendering matches ADR 0001
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -188,11 +185,11 @@ export function StorefrontCustomizer({
       loadedLayerImages,
       overlayImage
     });
-  }, [fieldValues, bgImage, loadedLayerImages, overlayImage, visibleOptions]);
+  }, [fieldValues, bgImage, loadedLayerImages, overlayImage, resolved.visibleOptions]);
 
-  // agregates active upcharges total
+  // aggregates active upcharges total
   const calculateUpchargeTotal = (): number => {
-    return calculateTotalUpcharges(options, fieldValues);
+    return resolved.totalUpcharge;
   };
 
   // Secured Interceptor submission loop mapping Phase 1 Cart Transform API
@@ -255,14 +252,14 @@ export function StorefrontCustomizer({
       targetForm.appendChild(previewInp);
 
       // Append all visible customization options as line-item properties cleanly
-      visibleOptions.forEach((opt) => {
-        const val = fieldValues[opt.id];
+      resolved.visibleOptions.forEach((opt) => {
+        const val = resolved.resolvedValues[opt.id];
         if (val) {
           const optInp = document.createElement("input");
           optInp.type = "hidden";
           optInp.className = "product-personalizer-hidden-checkout-prop";
           optInp.name = `properties[${opt.label}]`;
-          optInp.value = val;
+          optInp.value = String(val);
           targetForm.appendChild(optInp);
         }
       });
@@ -287,7 +284,7 @@ export function StorefrontCustomizer({
     return () => {
       if (form) form.removeEventListener("submit", handleCartSubmission);
     };
-  }, [fieldValues, visibleOptions, isDemo]);
+  }, [fieldValues, resolved.visibleOptions, isDemo]);
 
   // Render individual customizer form inputs
   const renderOption = (opt: CustomizationOption) => {
@@ -469,11 +466,11 @@ export function StorefrontCustomizer({
         </div>
 
         {/* Dynamic Presentation Layout Forms */}
-        {layoutMode === "tabs" && visibleOptions.length > 1 ? (
+        {layoutMode === "tabs" && resolved.visibleOptions.length > 1 ? (
           <div>
             {/* Tabs Navigation Headers */}
             <div className="personalizer-tabs-nav">
-              {visibleOptions.map((opt, idx) => (
+              {resolved.visibleOptions.map((opt, idx) => (
                 <button
                   key={opt.id}
                   type="button"
@@ -489,12 +486,12 @@ export function StorefrontCustomizer({
             </div>
 
             {/* Active Tab input field */}
-            {visibleOptions[activeTabIdx] && renderOption(visibleOptions[activeTabIdx])}
+            {resolved.visibleOptions[activeTabIdx] && renderOption(resolved.visibleOptions[activeTabIdx])}
           </div>
         ) : (
           /* Stacked Layout */
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            {visibleOptions.map(renderOption)}
+            {resolved.visibleOptions.map(renderOption)}
           </div>
         )}
 
