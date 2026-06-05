@@ -1,6 +1,10 @@
 import { CustomizationOption } from "./configEngine";
 import { PersonalizationLayoutEngine } from "./layoutEngine";
 import { ShopifyFilePublisher } from "./shopifyFilePublisher";
+import fs from "fs";
+import path from "path";
+import os from "os";
+import crypto from "crypto";
 
 export interface ShopifyOrderLineItem {
   id: string | number;
@@ -153,6 +157,78 @@ export class HttpNetworkAdapter implements NetworkAdapter {
       throw new Error(`Asset download failed: ${res.statusText} (${res.status})`);
     }
     return Buffer.from(await res.arrayBuffer());
+  }
+}
+
+export class CachedNetworkAdapter implements NetworkAdapter {
+  private cacheDir: string;
+
+  constructor(cacheSubdir = "personalizer-assets") {
+    const baseTempDir = process.env.TMPDIR || os.tmpdir() || "/tmp";
+    this.cacheDir = path.join(baseTempDir, cacheSubdir);
+    
+    // Ensure the cache directory exists
+    try {
+      if (!fs.existsSync(this.cacheDir)) {
+        fs.mkdirSync(this.cacheDir, { recursive: true });
+      }
+    } catch (err) {
+      console.warn("Failed to create asset cache directory:", err);
+    }
+  }
+
+  private getCachePath(url: string): string {
+    const hash = crypto.createHash("md5").update(url).digest("hex");
+    // Extract extension from the URL if possible, fallback to empty string
+    const urlPath = url.split("?")[0] || "";
+    const ext = path.extname(urlPath);
+    return path.join(this.cacheDir, `${hash}${ext}`);
+  }
+
+  async fetchAsset(url: string): Promise<Buffer> {
+    const cachePath = this.getCachePath(url);
+
+    // 1. Check local cache first
+    try {
+      if (fs.existsSync(cachePath)) {
+        return fs.readFileSync(cachePath);
+      }
+    } catch (err) {
+      console.warn(`Failed to read cached asset at ${cachePath}:`, err);
+    }
+
+    // 2. Fetch with retries and exponential backoff
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError: any = null;
+
+    while (attempt < maxRetries) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Asset download failed: ${response.statusText} (${response.status})`);
+        }
+        const buffer = Buffer.from(await response.arrayBuffer());
+
+        // Save to cache asynchronously
+        try {
+          fs.writeFileSync(cachePath, buffer);
+        } catch (writeErr) {
+          console.warn(`Failed to write asset cache for ${url}:`, writeErr);
+        }
+
+        return buffer;
+      } catch (err) {
+        attempt++;
+        lastError = err;
+        if (attempt < maxRetries) {
+          const delay = Math.pow(2, attempt) * 250; // 500ms, 1000ms
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw new Error(`Failed to fetch asset from ${url} after ${maxRetries} attempts. Last error: ${lastError?.message || lastError}`);
   }
 }
 
@@ -449,7 +525,7 @@ export class OrderPrintCompiler {
   static async compileOrder(options: CompileOrderOptions): Promise<OrderPrintCompilerResult> {
     const dbModule = await import("../db.server");
     const resolvedDb = options.db || dbModule.default;
-    const resolvedNetwork = options.network || new HttpNetworkAdapter();
+    const resolvedNetwork = options.network || new CachedNetworkAdapter();
 
     const shopifyClient = new ShopifyAdminClientGraphQLAdapter(options.admin);
     const database = new PrismaDatabaseAdapter(resolvedDb);
