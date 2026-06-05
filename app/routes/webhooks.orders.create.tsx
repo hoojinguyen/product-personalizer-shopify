@@ -1,8 +1,12 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { compilePrintFile } from "../utils/printCompiler";
-import { ShopifyFilePublisher } from "../utils/shopifyFilePublisher";
+import {
+  PrintFileCompilerImpl,
+  ShopifyAdminClientGraphQLAdapter,
+  PrismaDatabaseAdapter,
+  HttpNetworkAdapter
+} from "../utils/printCompiler";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, admin, payload, topic } = await authenticate.webhook(request);
@@ -15,9 +19,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // Iterate over line items to see if any are personalized
-  const lineItems = payload.line_items || [];
-  const personalizedItems = lineItems.filter((item: any) => {
-    return item.properties && item.properties.some((prop: any) => !prop.name.startsWith("_") && prop.name !== "priceUpcharge");
+  interface WebhookProperty {
+    name: string;
+    value: unknown;
+  }
+  interface WebhookLineItem {
+    id: string | number;
+    product_id: string | number;
+    title: string;
+    variant_title?: string | null;
+    properties?: WebhookProperty[] | null;
+  }
+  const lineItems = (payload.line_items || []) as WebhookLineItem[];
+  const personalizedItems = lineItems.filter((item) => {
+    return item.properties && item.properties.some((prop) => !prop.name.startsWith("_") && prop.name !== "priceUpcharge");
   });
 
   if (personalizedItems.length === 0) {
@@ -34,78 +49,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     },
   });
 
+  const compiler = new PrintFileCompilerImpl();
+  const adapters = {
+    shopifyClient: new ShopifyAdminClientGraphQLAdapter(admin),
+    database: new PrismaDatabaseAdapter(db),
+    network: new HttpNetworkAdapter(),
+  };
+
   try {
     const manufacturingFiles: string[] = [];
 
     for (const item of personalizedItems) {
       console.log(`Processing personalized item: ${item.title} (${item.variant_title || "Default Variant"})`);
 
-      // Extract custom properties
-      const propertiesMap: Record<string, string> = {};
-      item.properties.forEach((p: any) => {
-        propertiesMap[p.name] = p.value;
-      });
-
-      // Retrieve product detail via GraphQL to fetch featured product image and customization metafield for context
-      const productResponse = await admin.graphql(
-        `#graphql
-        query getProductData($id: ID!) {
-          product(id: $id) {
-            featuredImage {
-              url
-            }
-            metafield(namespace: "app", key: "customization_config") {
-              value
-            }
-          }
-        }`,
-        { variables: { id: `gid://shopify/Product/${item.product_id}` } }
-      );
-      const productJson = await productResponse.json();
-      const baseProductImageUrl = productJson.data?.product?.featuredImage?.url || "";
-      const configMetafield = productJson.data?.product?.metafield?.value || "";
-
-      let config: any = null;
-      try {
-        if (configMetafield) config = JSON.parse(configMetafield);
-      } catch (e) {
-        console.warn("Failed to parse product customization config:", e);
-      }
-
       // Compile the manufacturing-ready vector SVG print file using the deep Print File Compiler module
-      const { svgContent, warnings } = await compilePrintFile(
-        {
-          shopperValues: propertiesMap,
-          config: config?.options || [],
-        },
+      const result = await compiler.compileAndPublish(
         {
           shop,
+          orderId: String(payload.id),
           orderName: `#${payload.name}`,
-          lineItemTitle: item.title,
-        }
+          lineItem: {
+            id: String(item.id),
+            product_id: String(item.product_id),
+            title: item.title,
+            variant_title: item.variant_title,
+            properties: item.properties?.map((p) => ({ name: p.name, value: p.value })) || [],
+          },
+        },
+        adapters
       );
 
-      if (warnings.length > 0) {
-        console.warn(`Print compilation warnings for order item ${item.id}:`, warnings);
+      if (result.warnings.length > 0) {
+        console.warn(`Print compilation warnings for order item ${item.id}:`, result.warnings);
       }
 
-      // Step 1: Securely stage and publish the high-res SVG upload via Shopify Files API
-      const filename = `print_${payload.id}_${item.id}.svg`;
-      console.log(`Publishing compiled SVG print layout to Shopify: ${filename}`);
-
-      const publisher = new ShopifyFilePublisher();
-      const published = await publisher.publish(
-        admin,
-        {
-          content: svgContent,
-          filename,
-          mimeType: "image/svg+xml"
-        }
-      );
-
-      const finalUrl = published.publicUrl;
-      console.log(`Manufacturing print file generated successfully: ${finalUrl}`);
-      manufacturingFiles.push(finalUrl);
+      console.log(`Manufacturing print file generated successfully: ${result.publicUrl}`);
+      manufacturingFiles.push(result.publicUrl);
     }
 
     // Step 5: Save high-res URL back to Shopify Order Metafields
@@ -154,13 +133,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     console.log(`Successfully completed print compilation for Order #${payload.name}`);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`Failed to generate high-resolution print files for Order #${payload.name}:`, error);
     await db.orderProcessingLog.update({
       where: { id: logEntry.id },
       data: {
         status: "FAILED",
-        error: error.message || "Unknown rendering exception",
+        error: error instanceof Error ? error.message : "Unknown rendering exception",
       },
     });
   }
