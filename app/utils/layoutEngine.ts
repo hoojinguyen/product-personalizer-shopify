@@ -1,4 +1,5 @@
 import type { CustomizationOption } from "./configEngine";
+import { isOptionVisible, resolveOptionValue } from "./configEngine";
 
 export interface LayoutNode {
   id: string;
@@ -16,52 +17,6 @@ export interface LayoutNode {
   imageUrl?: string;
 }
 
-/**
- * Resolves an option value from the shopper values dictionary, checking by ID first and falling back to Label.
- */
-export function resolveOptionValue(opt: CustomizationOption, values: Record<string, unknown>): unknown {
-  return values[opt.id] !== undefined ? values[opt.id] : values[opt.label];
-}
-
-/**
- * Evaluates conditional visibility rules for a customization option, supporting ID and Label lookups.
- */
-export function isOptionVisible(
-  opt: CustomizationOption,
-  values: Record<string, unknown>,
-  options: CustomizationOption[]
-): boolean {
-  if (!opt.conditionalRules || opt.conditionalRules.length === 0) return true;
-
-  return opt.conditionalRules.every((rule) => {
-    if (!rule.fieldId) return true;
-
-    // Find the trigger option in options list to resolve by ID or label
-    const triggerOpt = options.find((o) => o.id === rule.fieldId);
-    let val: unknown = undefined;
-    if (triggerOpt) {
-      val = resolveOptionValue(triggerOpt, values);
-    } else {
-      val = values[rule.fieldId];
-    }
-
-    const stringVal = val === undefined || val === null ? "" : String(val).trim();
-
-    if (rule.operator === "checked") {
-      return val === true || stringVal === "true" || stringVal.toLowerCase() === "yes";
-    }
-    if (rule.operator === "unchecked") {
-      return !val || val === false || stringVal === "false" || stringVal === "";
-    }
-    if (rule.operator === "equals") {
-      return stringVal === String(rule.value || "").trim();
-    }
-    if (rule.operator === "not_equals") {
-      return stringVal !== String(rule.value || "").trim();
-    }
-    return true;
-  });
-}
 
 /**
  * High-leverage Layout Engine.

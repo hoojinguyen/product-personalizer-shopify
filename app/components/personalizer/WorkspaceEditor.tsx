@@ -294,7 +294,7 @@ export function WorkspaceEditor({
 
     if (activeLayerId) {
       const opt = options.find(o => o.id === activeLayerId);
-      if (opt && isOptionVisible(opt, shopperValues)) {
+      if (opt && isOptionVisible(opt, shopperValues, options)) {
         const cx = opt.canvasX ?? 400;
         const cy = opt.canvasY ?? 400;
         
@@ -368,7 +368,7 @@ export function WorkspaceEditor({
     // Layer body selection checking
     for (let i = options.length - 1; i >= 0; i--) {
       const opt = options[i];
-      if (!isOptionVisible(opt, shopperValues)) continue;
+      if (!isOptionVisible(opt, shopperValues, options)) continue;
       
       const cx = opt.canvasX ?? 400;
       const cy = opt.canvasY ?? 400;
@@ -463,7 +463,7 @@ export function WorkspaceEditor({
       let hoverId = null;
       for (let i = options.length - 1; i >= 0; i--) {
         const o = options[i];
-        if (!isOptionVisible(o, shopperValues)) continue;
+        if (!isOptionVisible(o, shopperValues, options)) continue;
         
         const cx = o.canvasX ?? 400;
         const cy = o.canvasY ?? 400;
@@ -1477,7 +1477,7 @@ export function WorkspaceEditor({
             {/* Logical coordinate overlays in workspace */}
             {rightSidebarMode === "designer" && activeLayerId && (() => {
               const opt = options.find(o => o.id === activeLayerId);
-              if (!opt || !isOptionVisible(opt, shopperValues)) return null;
+              if (!opt || !isOptionVisible(opt, shopperValues, options)) return null;
               const isText = opt.type === "text" || opt.type === "textarea";
               return (
                 <div className="coordinates-overlay">
@@ -1846,7 +1846,7 @@ export function WorkspaceEditor({
 
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px", flex: 1 }}>
                   {options.map((opt) => {
-                    if (!isOptionVisible(opt, shopperValues)) return null;
+                    if (!isOptionVisible(opt, shopperValues, options)) return null;
 
                     return (
                       <div key={opt.id} style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

@@ -33,17 +33,42 @@ export interface CustomizationOption {
 }
 
 /**
+ * Resolves an option value from the shopper values dictionary, checking by ID first and falling back to Label.
+ */
+export function resolveOptionValue(
+  opt: CustomizationOption,
+  values: Record<string, any>
+): unknown {
+  return values[opt.id] !== undefined ? values[opt.id] : values[opt.label];
+}
+
+/**
  * Evaluates conditional visibility for a customization option based on current selections.
+ * Supports both ID and Label-based lookups when the full options list is provided.
  */
 export function isOptionVisible(
   opt: CustomizationOption,
-  shopperValues: Record<string, any>
+  shopperValues: Record<string, any>,
+  options?: CustomizationOption[]
 ): boolean {
   if (!opt.conditionalRules || opt.conditionalRules.length === 0) return true;
   
   return opt.conditionalRules.every(rule => {
     if (!rule.fieldId) return true;
-    const val = shopperValues[rule.fieldId];
+    
+    let val: any = undefined;
+    if (options) {
+      // Find the trigger option in options list to resolve by ID or label
+      const triggerOpt = options.find(o => o.id === rule.fieldId);
+      if (triggerOpt) {
+        val = resolveOptionValue(triggerOpt, shopperValues);
+      } else {
+        val = shopperValues[rule.fieldId];
+      }
+    } else {
+      val = shopperValues[rule.fieldId];
+    }
+    
     const stringVal = val === undefined || val === null ? "" : String(val).trim();
     
     if (rule.operator === "checked") {
@@ -71,7 +96,7 @@ export function calculateTotalUpcharges(
 ): number {
   let sum = 0;
   options.forEach(opt => {
-    if (isOptionVisible(opt, shopperValues) && opt.priceUpcharge > 0) {
+    if (isOptionVisible(opt, shopperValues, options) && opt.priceUpcharge > 0) {
       const val = shopperValues[opt.id];
       if (val !== undefined && val !== null && val !== "") {
         if (opt.type === "checkbox") {

@@ -168,7 +168,7 @@ export function StorefrontCustomizer({
   };
 
   const isStorefrontOptionVisible = (opt: CustomizationOption) => {
-    return isOptionVisible(opt, fieldValues);
+    return isOptionVisible(opt, fieldValues, options);
   };
 
   const visibleOptions = options.filter(isStorefrontOptionVisible);
