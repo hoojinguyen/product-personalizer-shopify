@@ -504,15 +504,24 @@ export default function TemplatesPanel() {
 
   // Load custom background image for canvas if any
   const [bgImageObj, setBgImageObj] = useState<HTMLImageElement | null>(null);
+  const [bgImageLoading, setBgImageLoading] = useState(false);
   useEffect(() => {
     if (viewBackground && viewBackground !== "Blank Canvas") {
+      setBgImageLoading(true);
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.src = viewBackground;
-      img.onload = () => setBgImageObj(img);
-      img.onerror = () => setBgImageObj(null);
+      img.onload = () => {
+        setBgImageObj(img);
+        setBgImageLoading(false);
+      };
+      img.onerror = () => {
+        setBgImageObj(null);
+        setBgImageLoading(false);
+      };
     } else {
       setBgImageObj(null);
+      setBgImageLoading(false);
     }
   }, [viewBackground]);
 
@@ -534,6 +543,16 @@ export default function TemplatesPanel() {
     } else {
       cx.fillStyle = "#ffffff";
       cx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    if (bgImageLoading) {
+      cx.fillStyle = "rgba(240, 240, 240, 0.8)";
+      cx.fillRect(0, 0, canvas.width, canvas.height);
+      cx.fillStyle = "#6d7175";
+      cx.font = "bold 28px sans-serif";
+      cx.textAlign = "center";
+      cx.textBaseline = "middle";
+      cx.fillText("Loading background image...", canvas.width / 2, canvas.height / 2);
     }
 
     if (livePreview) {
@@ -632,7 +651,7 @@ export default function TemplatesPanel() {
     cx.font = "bold 14px monospace";
     cx.textAlign = "right";
     cx.fillText(`${canvasW}x${canvasH}px logical viewport`, canvas.width - 20, canvas.height - 20);
-  }, [previewText, previewFont, previewColor, options, selectedOptionId, canvasW, canvasH, livePreview, bgImageObj]);
+  }, [previewText, previewFont, previewColor, options, selectedOptionId, canvasW, canvasH, livePreview, bgImageObj, bgImageLoading]);
 
   // Handle toast notifications upon actions completion
   useEffect(() => {
@@ -891,28 +910,32 @@ export default function TemplatesPanel() {
   };
 
   const handleDuplicateTemplate = (id: string) => {
-    fetcher.submit(
-      {
-        intent: "duplicate_template",
-        id
-      },
-      { method: "POST" }
-    );
+    if (confirm("Duplicate this template? This will create a copy of the template configuration.")) {
+      fetcher.submit(
+        {
+          intent: "duplicate_template",
+          id
+        },
+        { method: "POST" }
+      );
+    }
   };
 
   const handleDuplicateBuiltIn = (builtin: any) => {
-    fetcher.submit(
-      {
-        intent: "save_template",
-        id: "",
-        name: `${builtin.name} Copy`,
-        description: builtin.description,
-        options: builtin.options,
-        productLinks: JSON.stringify([]),
-        unlinkedProducts: JSON.stringify([])
-      },
-      { method: "POST" }
-    );
+    if (confirm(`Duplicate "${builtin.name}" to your templates?`)) {
+      fetcher.submit(
+        {
+          intent: "save_template",
+          id: "",
+          name: `${builtin.name} Copy`,
+          description: builtin.description,
+          options: builtin.options,
+          productLinks: JSON.stringify([]),
+          unlinkedProducts: JSON.stringify([])
+        },
+        { method: "POST" }
+      );
+    }
   };
 
   const handleOpenLinkModal = (templateId: string) => {
@@ -1186,18 +1209,19 @@ export default function TemplatesPanel() {
 
         .customizer-header {
           padding: 16px 24px;
-          border-bottom: 1px solid #ebebeb;
+          border-bottom: 1px solid #e1e3e5;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: #fafafa;
+          background: #ffffff;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.02);
         }
 
         .customizer-header h2 {
           margin: 0;
           font-size: 16px;
           font-weight: 700;
-          color: #1a1a1a;
+          color: #202223;
         }
 
         .customizer-pane {
@@ -1602,7 +1626,17 @@ export default function TemplatesPanel() {
               {filteredBuiltIn.length === 0 ? (
                 <tr>
                   <td colSpan={3} style={{ textAlign: "center", color: "#6d7175", padding: "40px" }}>
-                    No built-in templates match your search.
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                      <span>No built-in templates match your search.</span>
+                      <button
+                        type="button"
+                        className="btn-text-action"
+                        style={{ border: "1px solid #babfc3", padding: "4px 12px", fontSize: "12px" }}
+                        onClick={() => setSearchTerm("")}
+                      >
+                        Clear search
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -1618,6 +1652,7 @@ export default function TemplatesPanel() {
                       <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
                         <button
                           title="Preview Template Design"
+                          aria-label="Preview Template Design"
                           className="action-icon-btn"
                           onClick={() => {
                             setSelectedTemplate({
@@ -1633,6 +1668,7 @@ export default function TemplatesPanel() {
                         </button>
                         <button
                           title="Duplicate to Your Templates"
+                          aria-label="Duplicate to Your Templates"
                           className="action-icon-btn"
                           onClick={() => handleDuplicateBuiltIn(builtin)}
                         >
@@ -1668,7 +1704,21 @@ export default function TemplatesPanel() {
                 {paginatedTemplates.length === 0 ? (
                   <tr>
                     <td colSpan={3} style={{ textAlign: "center", color: "#6d7175", padding: "40px" }}>
-                      {templates.length === 0 ? "You haven't created any templates yet. Click \"Create new Template\" to begin." : "No custom templates match your search."}
+                      {templates.length === 0 ? (
+                        "You haven't created any templates yet. Click \"Create new Template\" to begin."
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+                          <span>No custom templates match your search.</span>
+                          <button
+                            type="button"
+                            className="btn-text-action"
+                            style={{ border: "1px solid #babfc3", padding: "4px 12px", fontSize: "12px" }}
+                            onClick={() => setSearchTerm("")}
+                          >
+                            Clear search
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -1723,6 +1773,7 @@ export default function TemplatesPanel() {
                             </button>
                             <button
                               title="Edit Template Blueprint"
+                              aria-label="Edit Template Blueprint"
                               className="action-icon-btn"
                               onClick={() => {
                                 setSelectedTemplate(t);
@@ -1733,6 +1784,7 @@ export default function TemplatesPanel() {
                             </button>
                             <button
                               title="Duplicate Template"
+                              aria-label="Duplicate Template"
                               className="action-icon-btn"
                               onClick={() => handleDuplicateTemplate(t.id)}
                             >
@@ -1740,6 +1792,7 @@ export default function TemplatesPanel() {
                             </button>
                             <button
                               title="Delete Template"
+                              aria-label="Delete Template"
                               className="action-icon-btn danger"
                               onClick={() => handleDeleteTemplate(t.id, linkedCount)}
                             >
@@ -1915,41 +1968,104 @@ export default function TemplatesPanel() {
                       </div>
                       <div className="input-group">
                         <label>View Background</label>
-                        <select
-                          className="custom-input"
-                          value={assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } }) ? viewBackground : (viewBackground === "Blank Canvas" ? "Blank Canvas" : "custom")}
-                          onChange={(e) => {
-                            if (e.target.value === "custom") {
-                              setViewBackground("");
-                            } else {
-                              setViewBackground(e.target.value);
-                            }
-                          }}
-                        >
-                          <option value="Blank Canvas">Blank Canvas</option>
+                        <div className="background-grid-picker" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginTop: "6px" }}>
+                          
+                          {/* Blank Canvas option */}
+                          <div 
+                            className={`background-grid-item ${viewBackground === "Blank Canvas" ? "active" : ""}`}
+                            onClick={() => setViewBackground("Blank Canvas")}
+                            style={{
+                              border: viewBackground === "Blank Canvas" ? "2px solid #008060" : "1px solid #ebebeb",
+                              borderRadius: "6px",
+                              padding: "8px",
+                              textAlign: "center",
+                              cursor: "pointer",
+                              background: "#ffffff",
+                              fontSize: "12px",
+                              fontWeight: 600,
+                              minHeight: "50px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center"
+                            }}
+                          >
+                            Blank Canvas
+                          </div>
+
+                          {/* Image Assets options */}
                           {assets.filter(a => a.type === "IMAGE" || a.type === "IMAGES").map(a => {
                             try {
                               const parsed = JSON.parse(a.value);
-                              return <option key={a.id} value={parsed.url}>{a.name}</option>;
+                              const isSelected = viewBackground === parsed.url;
+                              return (
+                                <div 
+                                  key={a.id}
+                                  className={`background-grid-item ${isSelected ? "active" : ""}`}
+                                  onClick={() => setViewBackground(parsed.url)}
+                                  title={a.name}
+                                  style={{
+                                    border: isSelected ? "2px solid #008060" : "1px solid #ebebeb",
+                                    borderRadius: "6px",
+                                    padding: "2px",
+                                    cursor: "pointer",
+                                    background: "#ffffff",
+                                    minHeight: "50px",
+                                    position: "relative",
+                                    overflow: "hidden"
+                                  }}
+                                >
+                                  <img 
+                                    src={parsed.url} 
+                                    alt={a.name} 
+                                    style={{ width: "100%", height: "100%", minHeight: "44px", objectFit: "cover", borderRadius: "4px" }} 
+                                  />
+                                </div>
+                              );
                             } catch(e) { return null; }
                           })}
-                          {viewBackground !== "Blank Canvas" && !assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } }) && (
-                            <option value="custom">Custom Image URL / Path</option>
-                          )}
-                          {viewBackground === "" && (
-                            <option value="custom">Custom Image URL / Path</option>
-                          )}
-                        </select>
-                        {(viewBackground !== "Blank Canvas" && (!assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } }) || viewBackground === "")) && (
-                          <input
-                            type="text"
-                            className="custom-input"
-                            style={{ marginTop: "4px" }}
-                            value={viewBackground}
-                            onChange={(e) => setViewBackground(e.target.value)}
-                            placeholder="Enter image URL or relative path..."
-                          />
-                        )}
+
+                          {/* Custom Image URL option */}
+                          {(() => {
+                            const isCustom = viewBackground !== "Blank Canvas" && !assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } });
+                            return (
+                              <div 
+                                className={`background-grid-item ${isCustom ? "active" : ""}`}
+                                onClick={() => setViewBackground("")}
+                                style={{
+                                  border: isCustom ? "2px solid #008060" : "1px solid #ebebeb",
+                                  borderRadius: "6px",
+                                  padding: "8px",
+                                  textAlign: "center",
+                                  cursor: "pointer",
+                                  background: "#ffffff",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  minHeight: "50px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center"
+                                }}
+                              >
+                                Custom URL
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Input field for Custom URL */}
+                        {(() => {
+                          const isCustom = viewBackground !== "Blank Canvas" && !assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } });
+                          return isCustom && (
+                            <input
+                              type="text"
+                              className="custom-input"
+                              style={{ marginTop: "8px" }}
+                              value={viewBackground}
+                              onChange={(e) => setViewBackground(e.target.value)}
+                              placeholder="Enter image URL or relative path..."
+                            />
+                          );
+                        })()}
                       </div>
 
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
