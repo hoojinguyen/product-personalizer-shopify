@@ -448,8 +448,8 @@ export function SettingsForm({
           </s-stack>
         </div>
 
-        {/* ================= TAB 3: FORM FIELDS & CART ================= */}
-        <div style={{ display: activeCategory === "fields_cart" ? "block" : "none" }}>
+        {/* ================= TAB 3: FORM FIELDS ================= */}
+        <div style={{ display: activeCategory === "fields" ? "block" : "none" }}>
           <s-stack gap="base" direction="block">
             {/* Section 1: Text & Translations */}
             <s-stack gap="base" direction="block">
@@ -545,10 +545,13 @@ export function SettingsForm({
                 <s-option value="1000">1000 x 1000 pixels (High Definition)</s-option>
               </s-select>
             </s-stack>
+          </s-stack>
+        </div>
 
-            <s-divider></s-divider>
-
-            {/* Section 3: Cart Checkout Redirect */}
+        {/* ================= TAB 4: CART & CHECKOUT ================= */}
+        <div style={{ display: activeCategory === "cart" ? "block" : "none" }}>
+          <s-stack gap="base" direction="block">
+            {/* Section 1: Cart Checkout Redirect */}
             <s-stack gap="base" direction="block">
               <s-heading>Add to Cart Checkout Behaviors</s-heading>
               <s-paragraph color="subdued">Define checkout redirection routing once options are submitted.</s-paragraph>

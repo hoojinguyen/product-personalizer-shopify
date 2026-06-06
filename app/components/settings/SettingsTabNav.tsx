@@ -25,10 +25,10 @@ export function SettingsTabNav({
         .settings-tab-container {
           background: #fafafa;
           border-bottom: 1px solid #ebebeb;
-          padding: 0 16px;
+          padding: 0;
           display: flex;
-          gap: 8px;
           border-radius: 8px 8px 0 0;
+          overflow: hidden;
         }
         .settings-tab-item {
           background: none;
@@ -42,14 +42,23 @@ export function SettingsTabNav({
           transition: all 0.2s ease;
           display: flex;
           flex-direction: column;
-          align-items: flex-start;
-          text-align: left;
+          align-items: center;
+          text-align: center;
+          flex: 1;
+        }
+        .settings-tab-item:first-child {
+          border-top-left-radius: 8px;
+        }
+        .settings-tab-item:last-child {
+          border-top-right-radius: 8px;
         }
         .settings-tab-item:hover {
           color: #1a1a1a;
+          background-color: #f5f5f5;
         }
         .settings-tab-item.active {
-          color: #1a1a1a;
+          color: ${brandColor};
+          background-color: ${brandColor}14;
           border-bottom-color: ${brandColor};
         }
         .settings-tab-desc {
@@ -59,7 +68,8 @@ export function SettingsTabNav({
           margin-top: 2px;
         }
         .settings-tab-item.active .settings-tab-desc {
-          color: #6d7175;
+          color: ${brandColor};
+          opacity: 0.8;
         }
       `}</style>
       {tabs.map((tab) => (

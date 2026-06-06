@@ -239,7 +239,8 @@ export default function AppSettingsPanel() {
   const tabs = [
     { id: "integration", name: "Integration", desc: "Active themes & app blocks" },
     { id: "design", name: "Design & Layout", desc: "Accent colors, padding, swatches" },
-    { id: "fields_cart", name: "Form Fields & Cart", desc: "Labels, upload specs, checkout rules" },
+    { id: "fields", name: "Form Fields", desc: "Labels, upload specs, limits" },
+    { id: "cart", name: "Cart & Checkout", desc: "Redirects & checkout behaviors" },
     { id: "developer", name: "Developer Settings", desc: "Export formatting & code injection" }
   ];
 
@@ -456,7 +457,7 @@ export default function AppSettingsPanel() {
             tabs={tabs}
             activeTab={activeCategory}
             setActiveTab={setActiveCategory}
-            brandColor={brandColor}
+            brandColor="#1a1a1a"
           />
         </s-box>
       </div>
