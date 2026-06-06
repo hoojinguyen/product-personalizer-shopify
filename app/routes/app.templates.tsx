@@ -691,29 +691,29 @@ export default function TemplatesPanel() {
           renderW = fontSize * textVal.length * 0.5;
           renderH = fontSize;
         } else if (opt.type === "clipart") {
-          cx.fillStyle = "rgba(0, 128, 96, 0.08)";
-          cx.strokeStyle = "#008060";
+          cx.fillStyle = "rgba(26, 26, 26, 0.05)";
+          cx.strokeStyle = "#1a1a1a";
           cx.lineWidth = 3;
           renderW = opt.canvasWidth ?? 250;
           renderH = opt.canvasHeight ?? 250;
           cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
           cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
           
-          cx.fillStyle = "#008060";
+          cx.fillStyle = "#1a1a1a";
           cx.font = "bold 20px Arial";
           cx.textAlign = "center";
           cx.textBaseline = "middle";
           cx.fillText(`🖼️ Clipart: ${opt.label}`, 0, 0);
         } else if (opt.type === "file") {
-          cx.fillStyle = "rgba(44, 62, 80, 0.08)";
-          cx.strokeStyle = "#2c3e50";
+          cx.fillStyle = "rgba(26, 26, 26, 0.05)";
+          cx.strokeStyle = "#1a1a1a";
           cx.lineWidth = 3;
           renderW = opt.canvasWidth ?? 250;
           renderH = opt.canvasHeight ?? 250;
           cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
           cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
           
-          cx.fillStyle = "#2c3e50";
+          cx.fillStyle = "#1a1a1a";
           cx.font = "bold 20px Arial";
           cx.textAlign = "center";
           cx.textBaseline = "middle";
@@ -722,7 +722,7 @@ export default function TemplatesPanel() {
 
         // Selected outline bounding bounds
         if (opt.id === selectedOptionId) {
-          cx.strokeStyle = "#008060";
+          cx.strokeStyle = "#1a1a1a";
           cx.lineWidth = 3;
           cx.setLineDash([8, 8]);
           cx.strokeRect(-renderW/2 - 10, -renderH/2 - 10, renderW + 20, renderH + 20);
@@ -730,7 +730,7 @@ export default function TemplatesPanel() {
 
           // Draw Drag & Resize placement tooltip badge
           cx.save();
-          cx.fillStyle = "#008060";
+          cx.fillStyle = "#1a1a1a";
           const tooltipW = 150;
           const tooltipH = 26;
           const tooltipX = -tooltipW / 2;
@@ -751,7 +751,7 @@ export default function TemplatesPanel() {
 
           // Resize handles
           cx.fillStyle = "#ffffff";
-          cx.strokeStyle = "#008060";
+          cx.strokeStyle = "#1a1a1a";
           cx.lineWidth = 2.5;
           const handleSize = 14;
           const corners = [
@@ -1433,12 +1433,12 @@ export default function TemplatesPanel() {
         }
 
         .templates-tab-item:hover {
-          color: #000000;
+          color: #1a1a1a;
         }
 
         .templates-tab-item.active {
-          color: #008060;
-          border-bottom-color: #008060;
+          color: #1a1a1a;
+          border-bottom-color: #1a1a1a;
         }
 
         .search-and-filters {
@@ -1457,16 +1457,19 @@ export default function TemplatesPanel() {
         .search-field-input {
           width: 100%;
           padding: 8px 12px 8px 36px;
-          border: 1px solid #babfc3;
+          border: 1px solid #cbd5e1;
           border-radius: 6px;
           font-size: 14px;
           outline: none;
           background: #ffffff;
+          color: #1a1a1a;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          transition: border-color 0.15s, box-shadow 0.15s;
         }
 
         .search-field-input:focus {
-          border-color: #008060;
-          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.15);
+          border-color: #1a1a1a;
+          box-shadow: 0 0 0 1px #1a1a1a, 0 0 0 3px rgba(26, 26, 26, 0.15);
         }
 
         .search-field-icon {
@@ -1530,19 +1533,19 @@ export default function TemplatesPanel() {
         }
 
         .action-icon-btn:hover {
-          color: #000;
+          color: #1a1a1a;
           background: #f1f2f4;
         }
 
         .action-icon-btn.danger:hover {
-          color: #d93838;
+          color: #d92d20;
           background: #fde8e8;
         }
 
         .btn-text-action {
           background: none;
           border: none;
-          color: #008060;
+          color: #1a1a1a;
           font-weight: 600;
           cursor: pointer;
           font-size: 13px;
@@ -1552,7 +1555,7 @@ export default function TemplatesPanel() {
         }
 
         .btn-text-action:hover {
-          background: rgba(0, 128, 96, 0.08);
+          background: rgba(0, 0, 0, 0.05);
         }
 
         /* Overlay blocker modal styles */
@@ -1591,11 +1594,11 @@ export default function TemplatesPanel() {
 
         .customizer-header {
           padding: 16px 24px;
-          border-bottom: 1px solid #e1e3e5;
+          border-bottom: 1px solid #ebebeb;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: #ffffff;
+          background: #fafafa;
           box-shadow: 0 1px 2px rgba(0,0,0,0.02);
         }
 
@@ -1603,7 +1606,7 @@ export default function TemplatesPanel() {
           margin: 0;
           font-size: 16px;
           font-weight: 700;
-          color: #202223;
+          color: #1a1a1a;
         }
 
         .customizer-pane {
@@ -1636,25 +1639,30 @@ export default function TemplatesPanel() {
 
         .customizer-subtabs {
           display: flex;
-          background: #f1f2f4;
+          background: #ffffff;
           border-bottom: 1px solid #ebebeb;
-          padding: 4px 12px;
+          padding: 0 16px;
+          gap: 16px;
         }
 
         .customizer-subtab {
-          padding: 8px 14px;
-          font-size: 12px;
+          padding: 12px 4px;
+          font-size: 13px;
           font-weight: 600;
           color: #6d7175;
           cursor: pointer;
-          border-radius: 4px;
-          transition: all 0.2s;
+          border-bottom: 2px solid transparent;
+          transition: all 0.15s ease;
+          position: relative;
+        }
+
+        .customizer-subtab:hover {
+          color: #1a1a1a;
         }
 
         .customizer-subtab.active {
-          color: #000;
-          background: #ffffff;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+          color: #1a1a1a;
+          border-bottom: 2px solid #1a1a1a;
         }
 
         /* Custom Accordion Styling */
@@ -1666,7 +1674,7 @@ export default function TemplatesPanel() {
           padding: 14px 16px;
           font-size: 13px;
           font-weight: 700;
-          color: #2c3e50;
+          color: #1a1a1a;
           cursor: pointer;
           list-style: none;
           display: flex;
@@ -1681,14 +1689,19 @@ export default function TemplatesPanel() {
         }
 
         .sidebar-accordion summary::after {
-          content: "➔";
-          font-size: 10px;
-          color: #8c9196;
-          transition: transform 0.2s ease;
+          content: "";
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          border-right: 2px solid #8c9196;
+          border-bottom: 2px solid #8c9196;
+          transform: rotate(45deg);
+          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          margin-right: 4px;
         }
 
         .sidebar-accordion[open] summary::after {
-          transform: rotate(90deg);
+          transform: rotate(-135deg);
         }
 
         .accordion-content {
@@ -1713,17 +1726,33 @@ export default function TemplatesPanel() {
         }
 
         .custom-input {
-          padding: 8px;
-          border: 1px solid #babfc3;
+          padding: 8px 12px;
+          border: 1px solid #cbd5e1;
           border-radius: 6px;
           font-size: 13px;
           background: #ffffff;
+          color: #1a1a1a;
           outline: none;
+          transition: border-color 0.15s, box-shadow 0.15s;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        select.custom-input {
+          appearance: none;
+          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c5f62' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          background-size: 12px;
+          padding-right: 36px;
         }
 
         .custom-input:focus {
-          border-color: #008060;
-          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.1);
+          border-color: #1a1a1a;
+          box-shadow: 0 0 0 1px #1a1a1a, 0 0 0 3px rgba(26, 26, 26, 0.15);
+        }
+
+        .custom-input::placeholder {
+          color: #8c9196;
         }
 
         .toggle-switch-wrapper {
@@ -1775,7 +1804,7 @@ export default function TemplatesPanel() {
         }
 
         .toggle-switch input:checked + .toggle-slider {
-          background-color: #008060;
+          background-color: #1a1a1a;
         }
 
         .toggle-switch input:checked + .toggle-slider:before {
@@ -1796,7 +1825,7 @@ export default function TemplatesPanel() {
         }
 
         .canvas-interactive {
-          border: 1px solid #d2d5d8;
+          border: 1px solid #cbd5e1;
           border-radius: 6px;
           background: #ffffff;
           box-shadow: inset 0 2px 8px rgba(0,0,0,0.03);
@@ -1860,42 +1889,115 @@ export default function TemplatesPanel() {
         }
 
         .customizer-btn {
-          padding: 8px 16px;
+          padding: 8px 14px;
           font-size: 13px;
           font-weight: 600;
           border-radius: 6px;
           cursor: pointer;
-          transition: all 0.2s;
+          transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
           display: inline-flex;
           align-items: center;
+          justify-content: center;
           gap: 6px;
-          border: 1px solid #babfc3;
+          border: 1px solid #cbd5e1;
           background: #ffffff;
-          color: #2c3e50;
+          color: #1a1a1a;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          outline: none;
         }
 
         .customizer-btn:hover {
-          background: #f1f2f4;
+          background: #f6f6f7;
+          border-color: #94a3b8;
+        }
+
+        .customizer-btn:active {
+          background: #f1f5f9;
         }
 
         .customizer-btn.primary {
-          background: #008060;
-          border-color: #008060;
+          background: #1a1a1a;
+          border-color: #1a1a1a;
           color: #ffffff;
+          box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15), 0 1px 0 rgba(0, 0, 0, 0.05);
         }
 
         .customizer-btn.primary:hover {
-          background: #006e52;
+          background: #303030;
+          border-color: #303030;
+        }
+
+        .customizer-btn.primary:active {
+          background: #000000;
+          border-color: #000000;
         }
 
         .customizer-btn.danger {
-          background: #d93838;
-          border-color: #d93838;
+          background: #d92d20;
+          border-color: #d92d20;
           color: #ffffff;
+          box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15), 0 1px 0 rgba(0, 0, 0, 0.05);
         }
 
         .customizer-btn.danger:hover {
-          background: #be2e2e;
+          background: #b42318;
+          border-color: #b42318;
+        }
+
+        /* Option Card Redesign in Elements Tree */
+        .option-card-wrapper {
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          padding: 12px;
+          border-radius: 8px;
+          cursor: grab;
+          transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .option-card-wrapper:hover {
+          border-color: #94a3b8;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+        }
+
+        .option-card-wrapper.selected {
+          border-color: #1a1a1a;
+          box-shadow: 0 0 0 1px #1a1a1a, 0 2px 6px rgba(0, 0, 0, 0.08);
+          background: #fafafa;
+        }
+
+        .option-card-wrapper.drag-over {
+          border: 2px dashed #1a1a1a;
+          background: #f8fafc;
+        }
+
+        /* Background picker styling */
+        .background-grid-item {
+          border: 1px solid #ebebeb;
+          border-radius: 6px;
+          padding: 8px;
+          text-align: center;
+          cursor: pointer;
+          background: #ffffff;
+          font-size: 12px;
+          font-weight: 600;
+          min-height: 50px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.15s ease;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+        }
+
+        .background-grid-item:hover {
+          border-color: #cbd5e1;
+          background: #f6f6f7;
+        }
+
+        .background-grid-item.active {
+          border: 2px solid #1a1a1a !important;
+          background: #ffffff;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
         }
 
         /* Pagination overrides */
@@ -1915,12 +2017,13 @@ export default function TemplatesPanel() {
         }
 
         .pagination-arrow {
-          border: 1px solid #babfc3;
+          border: 1px solid #cbd5e1;
           background: #ffffff;
           padding: 6px 10px;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
           font-weight: 600;
+          color: #1a1a1a;
         }
 
         .pagination-arrow:disabled {
@@ -1934,15 +2037,15 @@ export default function TemplatesPanel() {
           padding: 6px 12px;
           font-size: 13px;
           font-weight: 600;
-          border-radius: 4px;
+          border-radius: 6px;
           cursor: pointer;
           border: 1px solid transparent;
         }
 
         .page-num.active {
-          background: #e1f5fe;
-          color: #0288d1;
-          border-color: #b3e5fc;
+          background: #f1f5f9;
+          color: #1a1a1a;
+          border-color: #cbd5e1;
         }
 
         /* Skeleton pulse animation */
@@ -1978,7 +2081,7 @@ export default function TemplatesPanel() {
         }
 
         .help-tooltip-icon:hover {
-          color: #5c5f62;
+          color: #1a1a1a;
         }
 
         .help-tooltip-text {
@@ -1987,7 +2090,7 @@ export default function TemplatesPanel() {
           bottom: 125%;
           left: 50%;
           transform: translateX(-50%);
-          background-color: #303030;
+          background-color: #1a1a1a;
           color: #ffffff;
           text-align: center;
           padding: 6px 10px;
@@ -2013,7 +2116,7 @@ export default function TemplatesPanel() {
           margin-left: -5px;
           border-width: 5px;
           border-style: solid;
-          border-color: #303030 transparent transparent transparent;
+          border-color: #1a1a1a transparent transparent transparent;
         }
 
         .help-tooltip-container:hover .help-tooltip-text {
@@ -2238,7 +2341,7 @@ export default function TemplatesPanel() {
                             {t.name}
                           </button>
                           {linkedCount.length > 0 && (
-                            <span style={{ marginLeft: "8px", fontSize: "11px", color: "#008060", background: "rgba(0,128,96,0.08)", padding: "2px 6px", borderRadius: "10px", fontWeight: "bold" }}>
+                            <span style={{ marginLeft: "8px", fontSize: "11px", color: "#303030", background: "#f1f2f4", padding: "2px 6px", borderRadius: "10px", fontWeight: "bold" }}>
                               Linked: {linkedCount.length}
                             </span>
                           )}
@@ -2371,8 +2474,8 @@ export default function TemplatesPanel() {
                   <div
                     onClick={() => setSelectedStyleCard("watch")}
                     style={{
-                      border: selectedStyleCard === "watch" ? "2px solid #008060" : "1px solid #babfc3",
-                      background: selectedStyleCard === "watch" ? "#f4fbf7" : "#ffffff",
+                      border: selectedStyleCard === "watch" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
+                      background: selectedStyleCard === "watch" ? "#fafafa" : "#ffffff",
                       borderRadius: "8px",
                       padding: "12px",
                       cursor: "pointer",
@@ -2391,8 +2494,8 @@ export default function TemplatesPanel() {
                   <div
                     onClick={() => setSelectedStyleCard("neon")}
                     style={{
-                      border: selectedStyleCard === "neon" ? "2px solid #008060" : "1px solid #babfc3",
-                      background: selectedStyleCard === "neon" ? "#f4fbf7" : "#ffffff",
+                      border: selectedStyleCard === "neon" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
+                      background: selectedStyleCard === "neon" ? "#fafafa" : "#ffffff",
                       borderRadius: "8px",
                       padding: "12px",
                       cursor: "pointer",
@@ -2411,8 +2514,8 @@ export default function TemplatesPanel() {
                   <div
                     onClick={() => setSelectedStyleCard("pillow")}
                     style={{
-                      border: selectedStyleCard === "pillow" ? "2px solid #008060" : "1px solid #babfc3",
-                      background: selectedStyleCard === "pillow" ? "#f4fbf7" : "#ffffff",
+                      border: selectedStyleCard === "pillow" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
+                      background: selectedStyleCard === "pillow" ? "#fafafa" : "#ffffff",
                       borderRadius: "8px",
                       padding: "12px",
                       cursor: "pointer",
@@ -2431,8 +2534,8 @@ export default function TemplatesPanel() {
                   <div
                     onClick={() => setSelectedStyleCard("generic")}
                     style={{
-                      border: selectedStyleCard === "generic" ? "2px solid #008060" : "1px solid #babfc3",
-                      background: selectedStyleCard === "generic" ? "#f4fbf7" : "#ffffff",
+                      border: selectedStyleCard === "generic" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
+                      background: selectedStyleCard === "generic" ? "#fafafa" : "#ffffff",
                       borderRadius: "8px",
                       padding: "12px",
                       cursor: "pointer",
@@ -2514,34 +2617,37 @@ export default function TemplatesPanel() {
                     <button
                       className="customizer-btn"
                       onClick={handleSafeClose}
-                      style={{ border: "none", background: "transparent", fontSize: "16px", padding: "4px 8px" }}
+                      style={{ border: "none", background: "transparent", padding: "4px 8px", color: "#6d7175", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                      title="Close Customizer (Esc)"
                     >
-                      ✕
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
-                    <h2>Template Customizer: <span style={{ color: "#008060" }}>{templateName || "New Template"}</span></h2>
+                    <h2>Template Customizer: <span style={{ color: "#1a1a1a", fontWeight: "bold" }}>{templateName || "New Template"}</span></h2>
                   </div>
                   
                   <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
                     {/* Undo/Redo Buttons */}
-                    <div style={{ display: "flex", border: "1px solid #babfc3", borderRadius: "6px", background: "#ffffff", marginRight: "10px" }}>
+                    <div style={{ display: "flex", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#ffffff", marginRight: "10px" }}>
                       <button
                         className="customizer-btn"
                         onClick={handleUndo}
                         disabled={historyIndex <= 0}
                         title="Undo (⌘Z)"
-                        style={{ border: "none", borderRadius: "6px 0 0 6px", padding: "8px 12px", background: "transparent", cursor: historyIndex <= 0 ? "not-allowed" : "pointer", opacity: historyIndex <= 0 ? 0.4 : 1 }}
+                        style={{ border: "none", borderRadius: "6px 0 0 6px", padding: "8px 12px", background: "transparent", cursor: historyIndex <= 0 ? "not-allowed" : "pointer", opacity: historyIndex <= 0 ? 0.4 : 1, display: "inline-flex", alignItems: "center", gap: "6px" }}
                       >
-                        ↩ Undo
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                        Undo
                       </button>
-                      <div style={{ width: "1px", background: "#babfc3" }} />
+                      <div style={{ width: "1px", background: "#cbd5e1" }} />
                       <button
                         className="customizer-btn"
                         onClick={handleRedo}
                         disabled={historyIndex >= optionHistory.length - 1}
                         title="Redo (⌘⇧Z)"
-                        style={{ border: "none", borderRadius: "0 6px 6px 0", padding: "8px 12px", background: "transparent", cursor: historyIndex >= optionHistory.length - 1 ? "not-allowed" : "pointer", opacity: historyIndex >= optionHistory.length - 1 ? 0.4 : 1 }}
+                        style={{ border: "none", borderRadius: "0 6px 6px 0", padding: "8px 12px", background: "transparent", cursor: historyIndex >= optionHistory.length - 1 ? "not-allowed" : "pointer", opacity: historyIndex >= optionHistory.length - 1 ? 0.4 : 1, display: "inline-flex", alignItems: "center", gap: "6px" }}
                       >
-                        Redo ↪
+                        Redo
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
                       </button>
                     </div>
                     
@@ -2551,20 +2657,25 @@ export default function TemplatesPanel() {
                         setLinkingTemplateId(selectedTemplate?.id || "temp-draft");
                         setIsLinkModalOpen(true);
                       }}
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
                     >
-                      🔗 Link to Products ({linkedProducts.length})
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                      Link to Products ({linkedProducts.length})
                     </button>
                     <button
                       className="customizer-btn primary"
                       onClick={handleSaveTemplate}
                       disabled={fetcher.state === "submitting"}
-                      style={fetcher.state === "submitting" ? { opacity: 0.7, cursor: "not-allowed" } : {}}
+                      style={fetcher.state === "submitting" ? { opacity: 0.7, cursor: "not-allowed", display: "inline-flex", alignItems: "center", gap: "6px" } : { display: "inline-flex", alignItems: "center", gap: "6px" }}
                       title="Save Template (⌘S)"
                     >
                       {fetcher.state === "submitting" ? (
                         <><span className="save-spinner" /> Saving...</>
                       ) : (
-                        <>💾 Save Template</>
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                          Save Template
+                        </>
                       )}
                     </button>
                   </div>
@@ -2654,20 +2765,6 @@ export default function TemplatesPanel() {
                           <div 
                             className={`background-grid-item ${viewBackground === "Blank Canvas" ? "active" : ""}`}
                             onClick={() => setViewBackground("Blank Canvas")}
-                            style={{
-                              border: viewBackground === "Blank Canvas" ? "2px solid #008060" : "1px solid #ebebeb",
-                              borderRadius: "6px",
-                              padding: "8px",
-                              textAlign: "center",
-                              cursor: "pointer",
-                              background: "#ffffff",
-                              fontSize: "12px",
-                              fontWeight: 600,
-                              minHeight: "50px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center"
-                            }}
                           >
                             Blank Canvas
                           </div>
@@ -2683,16 +2780,7 @@ export default function TemplatesPanel() {
                                   className={`background-grid-item ${isSelected ? "active" : ""}`}
                                   onClick={() => setViewBackground(parsed.url)}
                                   title={a.name}
-                                  style={{
-                                    border: isSelected ? "2px solid #008060" : "1px solid #ebebeb",
-                                    borderRadius: "6px",
-                                    padding: "2px",
-                                    cursor: "pointer",
-                                    background: "#ffffff",
-                                    minHeight: "50px",
-                                    position: "relative",
-                                    overflow: "hidden"
-                                  }}
+                                  style={{ padding: "2px", position: "relative", overflow: "hidden" }}
                                 >
                                   <img 
                                     src={parsed.url} 
@@ -2711,20 +2799,6 @@ export default function TemplatesPanel() {
                               <div 
                                 className={`background-grid-item ${isCustom ? "active" : ""}`}
                                 onClick={() => setViewBackground("")}
-                                style={{
-                                  border: isCustom ? "2px solid #008060" : "1px solid #ebebeb",
-                                  borderRadius: "6px",
-                                  padding: "8px",
-                                  textAlign: "center",
-                                  cursor: "pointer",
-                                  background: "#ffffff",
-                                  fontSize: "12px",
-                                  fontWeight: 600,
-                                  minHeight: "50px",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center"
-                                }}
                               >
                                 Custom URL
                               </div>
@@ -2913,19 +2987,21 @@ export default function TemplatesPanel() {
                                   const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
                                   handleReorderOption(fromIdx, idx);
                                 }}
-                                style={{
-                                  border: dragOverIdx === idx ? "2px dashed #008060" : isSelected ? "1px solid #008060" : "1px solid #ebebeb",
-                                  background: isSelected ? "#f4fbf7" : "#fafafa",
-                                  padding: "12px",
-                                  borderRadius: "8px",
-                                  cursor: "grab",
-                                  transition: "border 0.15s ease"
-                                }}
+                                className={`option-card-wrapper ${dragOverIdx === idx ? "drag-over" : isSelected ? "selected" : ""}`}
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <span style={{ cursor: "grab", color: "#8c9196", fontSize: "14px", letterSpacing: "-2px", userSelect: "none" }} title="Drag to reorder">⋮⋮</span>
-                                    <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#008060" : "#2c3e50" }}>
+                                    <span style={{ cursor: "grab", color: "#8c9196", display: "inline-flex", alignItems: "center" }} title="Drag to reorder">
+                                      <svg width="12" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="9" cy="5" r="1"/>
+                                        <circle cx="9" cy="12" r="1"/>
+                                        <circle cx="9" cy="19" r="1"/>
+                                        <circle cx="15" cy="5" r="1"/>
+                                        <circle cx="15" cy="12" r="1"/>
+                                        <circle cx="15" cy="19" r="1"/>
+                                      </svg>
+                                    </span>
+                                    <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#1a1a1a" : "#6d7175" }}>
                                       Option Layer #{idx + 1}
                                     </span>
                                   </div>
@@ -2934,13 +3010,13 @@ export default function TemplatesPanel() {
                                       <span style={{ fontSize: "10px", color: "#6d7175" }}>Remove?</span>
                                       <button
                                         onClick={() => { handleRemoveOption(opt.id); setPendingRemoveId(null); }}
-                                        style={{ border: "none", background: "#d93838", color: "#fff", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2px 8px", borderRadius: "4px" }}
+                                        style={{ border: "none", background: "#d92d20", color: "#fff", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2.5px 8px", borderRadius: "4px" }}
                                       >
                                         Yes
                                       </button>
                                       <button
                                         onClick={() => setPendingRemoveId(null)}
-                                        style={{ border: "1px solid #babfc3", background: "#fff", color: "#2c3e50", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2px 8px", borderRadius: "4px" }}
+                                        style={{ border: "1px solid #cbd5e1", background: "#fff", color: "#1a1a1a", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2.5px 8px", borderRadius: "4px" }}
                                       >
                                         Cancel
                                       </button>
@@ -2948,8 +3024,9 @@ export default function TemplatesPanel() {
                                   ) : (
                                     <button
                                       onClick={() => setPendingRemoveId(opt.id)}
-                                      style={{ border: "none", background: "none", color: "#d93838", fontSize: "11px", fontWeight: "bold", cursor: "pointer" }}
+                                      style={{ border: "none", background: "none", color: "#d92d20", fontSize: "11px", fontWeight: "bold", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "2px" }}
                                     >
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                       Remove
                                     </button>
                                   )}
@@ -3142,7 +3219,7 @@ export default function TemplatesPanel() {
 
                       <button
                         className="customizer-btn"
-                        style={{ width: "100%", border: "1px dashed #008060", color: "#008060", display: "flex", justifyContent: "center", marginTop: "12px" }}
+                        style={{ width: "100%", border: "1px dashed #1a1a1a", color: "#1a1a1a", display: "flex", justifyContent: "center", marginTop: "12px" }}
                         onClick={handleAddOption}
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -3159,23 +3236,32 @@ export default function TemplatesPanel() {
                 {/* Visual Card wrapping Canvas */}
                 <div className="canvas-frame-container">
                   {/* Info Row */}
-                  <div style={{ display: "flex", justifyContent: "space-between", width: "100%", borderBottom: "1px solid #ebebeb", paddingBottom: "10px" }}>
-                    <span style={{ fontSize: "14px", fontWeight: "bold" }}>Preview: {templateName}</span>
-                    <span style={{ fontSize: "14px", fontWeight: "bold", color: "#008060" }}>Upcharge Sum: ${optionPriceSum.toFixed(2)}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "20px", width: "100%", borderBottom: "1px solid #ebebeb", paddingBottom: "10px" }}>
+                    <span style={{ fontSize: "14px", fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "260px" }} title={`Preview: ${templateName}`}>
+                      Preview: {templateName}
+                    </span>
+                    <span style={{ fontSize: "14px", fontWeight: "bold", color: "#1a1a1a", flexShrink: 0 }}>
+                      Upcharge Sum: ${optionPriceSum.toFixed(2)}
+                    </span>
                   </div>
 
                   <div
                     style={{
                       width: "100%",
                       maxWidth: "450px",
+                      height: "350px",
                       overflow: "hidden",
                       display: "flex",
                       justifyContent: "center",
                       alignItems: "center",
                       padding: "16px",
                       background: "#fafafa",
+                      backgroundImage: "linear-gradient(45deg, #eaeaea 25%, transparent 25%), linear-gradient(-45deg, #eaeaea 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eaeaea 75%), linear-gradient(-45deg, transparent 75%, #eaeaea 75%)",
+                      backgroundSize: "20px 20px",
+                      backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
                       borderRadius: "8px",
-                      border: "1px dashed #d2d5d8",
+                      border: "1px solid #d2d5d8",
+                      boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)",
                       position: "relative"
                     }}
                     onWheel={(e) => {
@@ -3199,6 +3285,46 @@ export default function TemplatesPanel() {
                         transition: "transform 0.05s ease"
                       }}
                     />
+
+                    {/* Absolute Overlaid Zoom Toolbars (Figma style) */}
+                    <div style={{
+                      position: "absolute",
+                      bottom: "10px",
+                      right: "10px",
+                      display: "flex",
+                      gap: "4px",
+                      background: "rgba(255, 255, 255, 0.9)",
+                      backdropFilter: "blur(4px)",
+                      border: "1px solid #cbd5e1",
+                      borderRadius: "6px",
+                      padding: "3px",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+                      zIndex: 10
+                    }}>
+                      <button
+                        onClick={() => setCanvasZoom(prev => Math.max(25, prev - 10))}
+                        style={{ border: "none", background: "none", cursor: "pointer", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#6d7175" }}
+                        title="Zoom Out"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      </button>
+                      <div style={{ width: "1px", background: "#cbd5e1" }} />
+                      <button
+                        onClick={() => setCanvasZoom(100)}
+                        style={{ border: "none", background: "none", cursor: "pointer", fontSize: "11px", padding: "4px 6px", fontWeight: "bold", color: "#1a1a1a", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        title="Reset Zoom to 100%"
+                      >
+                        Reset (100%)
+                      </button>
+                      <div style={{ width: "1px", background: "#cbd5e1" }} />
+                      <button
+                        onClick={() => setCanvasZoom(prev => Math.max(25, Math.min(200, prev + 10)))}
+                        style={{ border: "none", background: "none", cursor: "pointer", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#6d7175" }}
+                        title="Zoom In"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Zoom controls (P2) */}
@@ -3218,7 +3344,7 @@ export default function TemplatesPanel() {
                       step="5"
                       value={canvasZoom}
                       onChange={(e) => setCanvasZoom(parseInt(e.target.value))}
-                      style={{ flex: 1, accentColor: "#008060" }}
+                      style={{ flex: 1, accentColor: "#1a1a1a" }}
                     />
                     <button
                       className="customizer-btn"
@@ -3230,7 +3356,7 @@ export default function TemplatesPanel() {
                     <span style={{ fontSize: "12px", minWidth: "35px", textAlign: "right", fontWeight: 600 }}>{canvasZoom}%</span>
                     <button
                       className="customizer-btn"
-                      style={{ padding: "2px 8px", fontSize: "12px", border: "none", background: "transparent", color: "#008060" }}
+                      style={{ padding: "2px 8px", fontSize: "12px", border: "none", background: "transparent", color: "#1a1a1a", fontWeight: "bold" }}
                       onClick={() => setCanvasZoom(100)}
                     >
                       Reset
@@ -3238,25 +3364,28 @@ export default function TemplatesPanel() {
                   </div>
 
                   {/* Canvas Dynamic testing fields */}
-                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", background: "#f8f9fa", padding: "12px", borderRadius: "8px", marginTop: "6px" }}>
-                    <span style={{ fontWeight: 700, fontSize: "11px", color: "#6d7175", textTransform: "uppercase" }}>Tester controls</span>
+                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px", background: "#ffffff", border: "1px solid #ebebeb", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", padding: "16px", borderRadius: "10px", marginTop: "24px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ fontSize: "14px" }}>⚙️</span>
+                      <span style={{ fontWeight: 700, fontSize: "12px", color: "#2c3e50", letterSpacing: "0.5px", textTransform: "uppercase" }}>Interactive Tester Controls</span>
+                    </div>
                     
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
                       <div className="input-group">
-                        <label style={{ fontSize: "10px" }}>Sample Text</label>
+                        <label style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "4px" }}>Sample Text</label>
                         <input
                           type="text"
                           className="custom-input"
-                          style={{ padding: "6px", fontSize: "12px" }}
+                          style={{ padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #babfc3" }}
                           value={previewText}
                           onChange={(e) => setPreviewText(e.target.value)}
                         />
                       </div>
                       <div className="input-group">
-                        <label style={{ fontSize: "10px" }}>Sample Font</label>
+                        <label style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "4px" }}>Sample Font</label>
                         <select
                           className="custom-input"
-                          style={{ padding: "6px", fontSize: "12px" }}
+                          style={{ padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #babfc3", height: "34px" }}
                           value={previewFont}
                           onChange={(e) => setPreviewFont(e.target.value)}
                         >
@@ -3268,10 +3397,10 @@ export default function TemplatesPanel() {
                         </select>
                       </div>
                       <div className="input-group">
-                        <label style={{ fontSize: "10px" }}>Sample Color</label>
+                        <label style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "4px" }}>Sample Color</label>
                         <select
                           className="custom-input"
-                          style={{ padding: "6px", fontSize: "12px" }}
+                          style={{ padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #babfc3", height: "34px" }}
                           value={previewColor}
                           onChange={(e) => setPreviewColor(e.target.value)}
                         >
@@ -3284,7 +3413,6 @@ export default function TemplatesPanel() {
                     </div>
                   </div>
                 </div>
-
               </div>
             </div>
             </>
@@ -3342,13 +3470,13 @@ export default function TemplatesPanel() {
                           } else {
                             const renderW = (opt.canvasWidth || 200) * 0.6;
                             const renderH = (opt.canvasHeight || 200) * 0.6;
-                            ctx.fillStyle = "rgba(0,128,96,0.06)";
-                            ctx.strokeStyle = "#008060";
+                            ctx.fillStyle = "rgba(26,26,26,0.05)";
+                            ctx.strokeStyle = "#1a1a1a";
                             ctx.lineWidth = 2;
                             ctx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
                             ctx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
                             
-                            ctx.fillStyle = "#008060";
+                            ctx.fillStyle = "#1a1a1a";
                             ctx.font = "12px Arial";
                             ctx.textAlign = "center";
                             ctx.fillText(opt.label, 0, 0);
@@ -3418,19 +3546,19 @@ export default function TemplatesPanel() {
                   products.map((p: any) => {
                     const isLinked = linkedProducts.includes(p.id);
                     return (
-                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px", borderRadius: "4px", cursor: "pointer", background: isLinked ? "#f0fbf7" : "#ffffff" }}>
+                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", background: isLinked ? "#fafafa" : "#ffffff", border: isLinked ? "1px solid #1a1a1a" : "1px solid #cbd5e1", transition: "all 0.1s ease" }}>
                         <input
                           type="checkbox"
                           checked={isLinked}
                           onChange={() => toggleProductLink(p.id)}
-                          style={{ accentColor: "#008060", cursor: "pointer" }}
+                          style={{ accentColor: "#1a1a1a", cursor: "pointer" }}
                         />
                         {p.featuredImage?.url ? (
                           <img src={p.featuredImage.url} alt="" style={{ width: "32px", height: "32px", objectFit: "cover", borderRadius: "4px" }} />
                         ) : (
                           <div style={{ width: "32px", height: "32px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
                         )}
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#2c3e50" }}>{p.title}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#1a1a1a" }}>{p.title}</span>
                       </label>
                     );
                   })
