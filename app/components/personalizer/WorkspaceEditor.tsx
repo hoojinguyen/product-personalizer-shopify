@@ -558,34 +558,39 @@ export function WorkspaceEditor({
         .editor-modal-backdrop {
           position: fixed;
           top: 0; left: 0; right: 0; bottom: 0;
-          background-color: var(--p-color-bg-surface-secondary, #f6f6f7);
-          z-index: 999;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          z-index: 9999;
           display: flex;
-          align-items: stretch;
-          justify-content: stretch;
+          align-items: center;
+          justify-content: center;
           font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-          animation: workspaceFadeIn 0.25s ease-out forwards;
+          animation: workspaceFadeIn 0.2s ease-out;
         }
         @keyframes workspaceFadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
         }
         .editor-modal-card {
-          width: 100%;
-          height: 100%;
-          max-width: none;
-          background-color: var(--p-color-bg-surface-secondary, #f6f6f7);
-          border: none;
-          border-radius: 0;
-          box-shadow: none;
+          width: 90vw;
+          height: 90vh;
+          background-color: #ffffff;
+          border-radius: 14px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
           display: flex;
           flex-direction: column;
           overflow: hidden;
+          animation: workspaceSlideUp 0.25s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+        @keyframes workspaceSlideUp {
+          from { transform: translateY(40px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
         .editor-header {
           height: 64px;
-          background-color: var(--p-color-bg-surface, #ffffff);
-          border-bottom: 1px solid var(--p-color-border-muted, #e1e3e5);
+          background-color: #fafafa;
+          border-bottom: 1px solid #ebebeb;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -634,10 +639,10 @@ export function WorkspaceEditor({
           font-size: 11px;
           font-weight: 600;
           line-height: 1;
-          color: #008060;
-          background-color: #eafbf4;
+          color: #1a1a1a;
+          background-color: #f1f2f4;
           border-radius: 12px;
-          border: 1px solid #82e3b9;
+          border: 1px solid #cbd5e1;
         }
         
         /* Custom Buttons */
@@ -648,9 +653,9 @@ export function WorkspaceEditor({
           gap: 8px;
           height: 36px;
           padding: 0 16px;
-          background-color: #008060;
+          background-color: #1a1a1a;
           color: #ffffff;
-          border: 1px solid #007f5f;
+          border: 1px solid #1a1a1a;
           border-radius: 6px;
           font-size: 14px;
           font-weight: 600;
@@ -659,10 +664,12 @@ export function WorkspaceEditor({
           box-shadow: 0 1px 0 rgba(0,0,0,0.05);
         }
         .btn-primary:hover {
-          background-color: #006e52;
+          background-color: #303030;
+          border-color: #303030;
         }
         .btn-primary:active {
-          background-color: #005e46;
+          background-color: #000000;
+          border-color: #000000;
         }
         .btn-secondary {
           display: inline-flex;
@@ -686,13 +693,40 @@ export function WorkspaceEditor({
           border-color: #8c9196;
         }
         .btn-secondary:active {
-          background-color: #f1f2f4;
+          background: #f1f2f4;
         }
         .btn-icon {
           width: 16px;
           height: 16px;
           fill: currentColor;
           flex-shrink: 0;
+        }
+
+        .customizer-btn {
+          padding: 8px 14px;
+          font-size: 13px;
+          font-weight: 600;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          color: #1a1a1a;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          outline: none;
+        }
+
+        .customizer-btn:hover {
+          background: #f6f6f7;
+          border-color: #94a3b8;
+        }
+
+        .customizer-btn:active {
+          background: #f1f5f9;
         }
 
         /* Toggle Switch styling */
@@ -731,7 +765,7 @@ export function WorkspaceEditor({
           box-shadow: 0 1px 3px rgba(0,0,0,0.15);
         }
         .toggle-switch input:checked + .toggle-slider {
-          background-color: #008060;
+          background-color: #1a1a1a;
         }
         .toggle-switch input:checked + .toggle-slider:before {
           transform: translateX(16px);
@@ -801,8 +835,8 @@ export function WorkspaceEditor({
         }
         .layer-card.selected {
           background-color: var(--p-color-bg-surface-active, #f1f2f4);
-          border-color: var(--p-color-border-active, #008060);
-          box-shadow: 0 0 0 1px var(--p-color-border-active, #008060);
+          border-color: #1a1a1a;
+          box-shadow: 0 0 0 1px #1a1a1a;
         }
         .canvas-container {
           position: relative;
@@ -850,7 +884,7 @@ export function WorkspaceEditor({
         }
         .hint-capsule:hover {
           box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-          border-color: #008060;
+          border-color: #1a1a1a;
           color: #202223;
         }
         .floating-toolbar > * {
@@ -885,8 +919,8 @@ export function WorkspaceEditor({
           background-color: var(--p-color-bg-surface-hover, #fafafb);
         }
         .tab-button.active {
-          color: var(--p-color-text-active, #008060);
-          border-bottom-color: var(--p-color-border-active, #008060);
+          color: #1a1a1a;
+          border-bottom-color: #1a1a1a;
           background-color: var(--p-color-bg-surface, #ffffff);
         }
         .tab-icon {
@@ -921,8 +955,8 @@ export function WorkspaceEditor({
           color: var(--p-color-text, #202223);
         }
         .sub-tab-button.active {
-          color: var(--p-color-text-active, #008060);
-          border-bottom-color: var(--p-color-border-active, #008060);
+          color: #1a1a1a;
+          border-bottom-color: #1a1a1a;
         }
         .section-title-badge {
           display: inline-flex;
@@ -931,9 +965,9 @@ export function WorkspaceEditor({
           font-size: 9px;
           font-weight: 700;
           line-height: 1;
-          color: var(--p-color-text-success, #008060);
-          background-color: var(--p-color-bg-success-subdued, #eafbf4);
-          border: 1px solid #82e3b9;
+          color: #1a1a1a;
+          background-color: #f1f2f4;
+          border: 1px solid #cbd5e1;
           border-radius: 4px;
           text-transform: uppercase;
           letter-spacing: 0.05em;
@@ -1029,7 +1063,7 @@ export function WorkspaceEditor({
         }
         .swatch-item.active {
           transform: scale(1.1);
-          border-color: var(--p-color-border-active, #008060);
+          border-color: #1a1a1a;
           box-shadow: 0 0 0 2px var(--p-color-bg-surface, #ffffff);
         }
         .coordinates-overlay {
@@ -1046,8 +1080,8 @@ export function WorkspaceEditor({
           z-index: 5;
         }
         .upcharge-pill {
-          background-color: var(--p-color-bg-success-subdued, #eafbf4);
-          color: var(--p-color-text-success, #008060);
+          background-color: #f1f2f4;
+          color: #1a1a1a;
           padding: 2px 8px;
           border-radius: 12px;
           font-size: 11px;
@@ -1091,7 +1125,7 @@ export function WorkspaceEditor({
         }
         .add-layer-item:hover {
           background-color: #f1f2f4;
-          color: #008060;
+          color: #1a1a1a;
         }
         .layer-type-icon {
           width: 16px;
@@ -1102,7 +1136,7 @@ export function WorkspaceEditor({
           transition: color 0.15s ease;
         }
         .add-layer-item:hover .layer-type-icon {
-          color: #008060;
+          color: #1a1a1a;
         }
         .layers-count-badge {
           display: inline-flex;
@@ -1153,11 +1187,13 @@ export function WorkspaceEditor({
         {/* 🟢 TOP ACTION BAR */}
         <div className="editor-header">
           <div className="header-title-container">
-            <button className="btn-secondary" onClick={handleExit}>
-              <svg viewBox="0 0 20 20" className="btn-icon" focusable="false" aria-hidden="true">
-                <path d="M19 9h-14.17l5.59-5.59-1.42-1.41-8 8 8 8 1.41-1.41-5.58-5.59h14.17v-2z"></path>
-              </svg>
-              Exit Editor
+            <button
+              className="customizer-btn"
+              onClick={handleExit}
+              style={{ border: "none", background: "transparent", padding: "4px 8px", color: "#6d7175", display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              title="Close Customizer (Esc)"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <div className="header-title-divider" />
             <div className="header-title-info">

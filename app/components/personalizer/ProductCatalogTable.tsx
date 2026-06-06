@@ -123,10 +123,12 @@ export function ProductCatalogTable({
   };
 
   return (
-    <div>
-      <div className="page-header" style={{ marginBottom: "16px", marginTop: "8px" }}>
+    <div className="product-options-card-container">
+      {/* Page Header inside card */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 20px 16px 20px" }}>
         <div>
-          <p style={{ fontSize: "13px", color: "#6d7175", margin: 0 }}>
+          <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1a1a1a" }}>Product Options</h1>
+          <p style={{ fontSize: "13px", color: "#6d7175", margin: "4px 0 0 0" }}>
             Configure fields, upcharges, and coordinate layouts for your customizable store products.
           </p>
         </div>
@@ -138,21 +140,21 @@ export function ProductCatalogTable({
       {/* Bulk Operations Bar */}
       {bulkSelectedIds.length > 0 && (
         <div className="bulk-actions-bar" style={{
-          background: "#f0fbf7",
-          border: "1.5px solid #008060",
+          background: "#f8fafc",
+          border: "1.5px solid #ebebeb",
           borderRadius: "8px",
           padding: "12px 18px",
-          marginBottom: "16px",
+          margin: "0 20px 16px 20px",
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          boxShadow: "0 2px 8px rgba(0, 128, 96, 0.08)"
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.03)"
         }}>
-          <span style={{ fontSize: "13px", fontWeight: 600, color: "#006e52" }}>
+          <span style={{ fontSize: "13px", fontWeight: 600, color: "#1a1a1a" }}>
             Selected <strong>{bulkSelectedIds.length}</strong> {bulkSelectedIds.length === 1 ? "product" : "products"}
           </span>
           <div style={{ display: "flex", gap: "8px" }}>
-            <button className="btn-secondary" style={{ color: "#008060", border: "1px solid #008060", background: "#ffffff", display: "inline-flex", alignItems: "center" }} onClick={executeBulkActivate}>
+            <button className="btn-secondary" style={{ color: "#1a1a1a", border: "1px solid #cbd5e1", background: "#ffffff", display: "inline-flex", alignItems: "center" }} onClick={executeBulkActivate}>
               <span className="polaris-status-dot polaris-status-dot-active" style={{ marginRight: "6px" }} /> Activate Options
             </button>
             <button className="btn-secondary" style={{ color: "#6d7175", border: "1px solid #babfc3", background: "#ffffff", display: "inline-flex", alignItems: "center" }} onClick={executeBulkDeactivate}>
@@ -166,13 +168,13 @@ export function ProductCatalogTable({
       )}
 
       {/* Filter Toolbar row */}
-      <div className="search-filters-row">
-        <div className="search-wrapper">
-          <SearchIcon className="search-icon" />
+      <div className="search-and-filters">
+        <div className="search-field-wrapper">
+          <SearchIcon className="search-field-icon" />
           <input
             type="text"
             placeholder="Search customizer catalog..."
-            className="search-input"
+            className="search-field-input"
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -344,7 +346,7 @@ export function ProductCatalogTable({
                       </div>
                     </td>
                     <td>
-                      <span className="pill-tag" style={{ background: optCount > 0 ? "#e2f1eb" : "#f1f2f4", color: optCount > 0 ? "#008060" : "#6d7175" }}>
+                      <span className="pill-tag" style={{ background: optCount > 0 ? "#f1f2f4" : "#f1f2f4", color: optCount > 0 ? "#1a1a1a" : "#6d7175", fontWeight: optCount > 0 ? "bold" : "normal" }}>
                         {optCount} Layers
                       </span>
                       {p.tags?.slice(0, 2).map((t: string) => (
@@ -533,28 +535,55 @@ export function ProductCatalogTable({
           </tbody>
         </table>
 
-        {/* Pagination Footer */}
-        {totalPages > 1 && (
-          <div className="pagination-footer">
-            <span style={{ fontSize: "13px", color: "#6d7175" }}>
-              Showing Page <strong>{currentPage}</strong> of <strong>{totalPages}</strong> ({sortedProducts.length} total products)
-            </span>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                className="pagination-btn"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(currentPage - 1)}
+        {/* Pagination Bar */}
+        {sortedProducts.length > 0 && (
+          <div className="pagination-bar">
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", fontSize: "13px" }}>
+              <span>Show</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => {
+                  setItemsPerPage(parseInt(e.target.value));
+                  setCurrentPage(1);
+                }}
+                style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}
               >
-                Previous
-              </button>
-              <button
-                className="pagination-btn"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(currentPage + 1)}
-              >
-                Next
-              </button>
+                {[5, 10, 15, 20, 30, 50, 100].map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+              <span style={{ color: "#6d7175" }}>
+                Showing {Math.min(sortedProducts.length, (currentPage - 1) * itemsPerPage + 1)} - {Math.min(sortedProducts.length, currentPage * itemsPerPage)} of {sortedProducts.length} results
+              </span>
             </div>
+            
+            {totalPages > 1 && (
+              <div className="pagination-nav">
+                <button
+                  className="pagination-arrow"
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                >
+                  ←
+                </button>
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <button
+                    key={i}
+                    className={`page-num ${currentPage === i + 1 ? "active" : ""}`}
+                    onClick={() => setCurrentPage(i + 1)}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+                <button
+                  className="pagination-arrow"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                >
+                  →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
