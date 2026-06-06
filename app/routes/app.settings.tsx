@@ -4,7 +4,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { useEffect, useState } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
-import { SettingsSidebar } from "../components/settings/SettingsSidebar";
+import { SettingsTabNav } from "../components/settings/SettingsTabNav";
 import { SettingsForm } from "../components/settings/SettingsForm";
 import { StorefrontPreview } from "../components/settings/StorefrontPreview";
 import { useLayoutContext } from "../components/layout";
@@ -108,8 +108,8 @@ export default function AppSettingsPanel() {
   const [customCss, setCustomCss] = useState(settings.customCss || "");
   const [customJs, setCustomJs] = useState(settings.customJs || "");
 
-  // Category management
-  const [activeCategory, setActiveCategory] = useState("styling");
+  // Tab/Category management
+  const [activeCategory, setActiveCategory] = useState("integration");
 
   // Mock settings configuration states (UX Spec)
   const [fieldStyle, setFieldStyle] = useState("Normal");
@@ -236,19 +236,11 @@ export default function AppSettingsPanel() {
     }
   };
 
-  const categories = [
-    { id: "installation", name: "🔌 Installation", desc: "Active themes & app blocks" },
-    { id: "styling", name: "🎨 Styling & Layout", desc: "Accent colors, padding, margins" },
-    { id: "popup", name: "📐 Popup Dimensions", desc: "Modal layout customization" },
-    { id: "text", name: "✍️ Text & Translations", desc: "Labels, character limits, buttons" },
-    { id: "image", name: "🖼️ Image Upload Specs", desc: "Upload size constraints & formats" },
-    { id: "swatches", name: "🔴 Swatches & Choices", desc: "Border styles & hover details" },
-    { id: "dropdown", name: "🔘 Dropdowns & Checkboxes", desc: "Spacings & layout alignments" },
-    { id: "cart", name: "🛒 Add to Cart & Checkout", desc: "Redirects & checkout behaviors" },
-    { id: "export", name: "📄 Export & DPI formats", desc: "Vector PDF & DPI resolution specs" },
-    { id: "pricing", name: "💰 Additional Pricing", desc: "Price layouts & format templates" },
-    { id: "css", name: "💻 Custom CSS Overrides", desc: "Monaco editor stylesheet injection" },
-    { id: "js", name: "⚙️ Custom JS Callbacks", desc: "Monaco editor script tracking" }
+  const tabs = [
+    { id: "integration", name: "Integration", desc: "Active themes & app blocks" },
+    { id: "design", name: "Design & Layout", desc: "Accent colors, padding, swatches" },
+    { id: "fields_cart", name: "Form Fields & Cart", desc: "Labels, upload specs, checkout rules" },
+    { id: "developer", name: "Developer Settings", desc: "Export formatting & code injection" }
   ];
 
   return (
@@ -258,35 +250,8 @@ export default function AppSettingsPanel() {
       <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=Playfair+Display:ital@0;1&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <style>{`
-        .category-item {
-          display: block;
-          width: 100%;
-          text-align: left;
-          background: none;
-          border: none;
-          padding: 10px 12px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          margin-bottom: 4px;
-        }
-        .category-item:hover {
-          background: #f1f2f4;
-        }
-        .category-item.active {
-          background: #e2f1eb;
-          color: #006e52;
-          font-weight: 600;
-        }
-        .category-name {
-          font-size: 14px;
-          display: block;
-        }
-        .category-desc {
-          font-size: 11px;
-          color: #6d7175;
-          display: block;
-          margin-top: 2px;
+        s-grid {
+          gap: 32px !important;
         }
         .preview-card {
           position: sticky;
@@ -383,6 +348,12 @@ export default function AppSettingsPanel() {
           cursor: pointer;
           border: 1px solid #d2d5d8;
         }
+        .settings-tab-card {
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          margin-bottom: 24px;
+        }
         @media (max-width: 1200px) {
           s-page > s-grid {
             display: flex !important;
@@ -478,16 +449,20 @@ export default function AppSettingsPanel() {
         }
       `}</style>
 
-      {/* Main Settings Grid Layout */}
-      <s-grid gridTemplateColumns="260px 1fr 340px" gap="base">
-        
-        {/* Category Navigation Sidebar */}
-        <SettingsSidebar
-          categories={categories}
-          activeCategory={activeCategory}
-          setActiveCategory={setActiveCategory}
-        />
+      {/* Sticky Tab Navigation Card wrapper */}
+      <div className="settings-tab-card">
+        <s-box padding="none" background="base" border="base" borderRadius="base">
+          <SettingsTabNav
+            tabs={tabs}
+            activeTab={activeCategory}
+            setActiveTab={setActiveCategory}
+            brandColor={brandColor}
+          />
+        </s-box>
+      </div>
 
+      {/* 2-Column Settings Workspace Layout */}
+      <s-grid gridTemplateColumns="1.5fr 1fr" gap="base">
         {/* Central Settings Form Panel */}
         <SettingsForm
           activeCategory={activeCategory}
@@ -607,7 +582,6 @@ export default function AppSettingsPanel() {
           optionsColumns={optionsColumns}
           layoutMode={layoutMode}
         />
-
       </s-grid>
     </s-page>
   );

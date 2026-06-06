@@ -187,7 +187,7 @@ export function StorefrontPreview({
   };
 
   return (
-    <div className="preview-card" style={{ position: "relative" }}>
+    <div className="preview-card" style={{ position: "sticky", top: "96px", alignSelf: "start" }}>
       <s-box padding="base" background="base" border="base" borderRadius="base">
         <div className="preview-header">
           <span className="preview-title">Live Storefront Preview</span>
@@ -197,14 +197,14 @@ export function StorefrontPreview({
               className={`mock-product-btn ${mockProductType === "backpack" ? "active" : ""}`}
               onClick={() => setMockProductType("backpack")}
             >
-              🎒 Backpack
+              Backpack
             </button>
             <button
               type="button"
               className={`mock-product-btn ${mockProductType === "mug" ? "active" : ""}`}
               onClick={() => setMockProductType("mug")}
             >
-              ☕ Mug
+              Mug
             </button>
           </div>
         </div>
@@ -224,7 +224,7 @@ export function StorefrontPreview({
               transform: (() => {
                 const multiplier = previewSize === "Small" ? 0.75 : previewSize === "Large" ? 1.25 : 1.0;
                 return mockProductType === "backpack"
-                  ? `translateY(55px) translateX(2px) scale(${0.85 * multiplier})`
+                  ? `translateY(80px) translateX(2px) scale(${0.85 * multiplier})`
                   : `translateY(10px) translateX(-25px) scale(${0.9 * multiplier})`;
               })(),
               opacity: previewText ? 1 : 0.4
@@ -274,7 +274,7 @@ export function StorefrontPreview({
                   }}
                   onClick={() => setActiveTab("text")}
                 >
-                  ✍️ Text & Font
+                  Text & Font
                 </button>
                 <button
                   type="button"
@@ -292,7 +292,7 @@ export function StorefrontPreview({
                   }}
                   onClick={() => setActiveTab("material")}
                 >
-                  🎨 Ink & Hardware
+                  Ink & Hardware
                 </button>
               </div>
               
