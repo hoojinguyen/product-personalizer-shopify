@@ -5,6 +5,12 @@ import db from "../db.server";
 import { PersonalizationConfigSync } from "../utils/templateSync";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { BuiltInTemplatesTab } from "../components/templates/BuiltInTemplatesTab";
+import { YourTemplatesTab } from "../components/templates/YourTemplatesTab";
+import { ProductLinkerModal } from "../components/templates/ProductLinkerModal";
+import { TemplateEditorModal } from "../components/templates/TemplateEditorModal";
+import type { CustomizationOption } from "../components/templates/TemplateEditorModal";
+
 
 // The GraphQL query to fetch store products for link selection
 const PRODUCTS_QUERY = `#graphql
@@ -137,33 +143,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { error: "Unknown intent" };
 };
 
-interface ConditionalRule {
-  fieldId: string;
-  operator: "equals" | "not_equals" | "checked" | "unchecked";
-  value: string;
-}
 
-interface CustomizationOption {
-  id: string;
-  type: "text" | "select" | "swatch" | "checkbox" | "file" | "clipart";
-  label: string;
-  required: boolean;
-  priceUpcharge: number;
-  defaultValue?: string;
-  maxChars?: number;
-  choices?: string; // Comma-separated or linked asset Set ID
-  choicesType?: "custom" | "global"; // Whether it uses custom list or links to an AssetSet
-  assetSetId?: string; // Links to global colors/options/images AssetSet
-  conditionalRules?: ConditionalRule[];
-  
-  // Coordinate positioning attributes (Phase 3 parity features)
-  canvasX?: number;
-  canvasY?: number;
-  canvasWidth?: number;
-  canvasHeight?: number;
-  canvasRotation?: number;
-  canvasFontSize?: number;
-}
 
 const BUILT_IN_TEMPLATES = [
   {
@@ -434,7 +414,7 @@ export default function TemplatesPanel() {
   const [linkingTemplateId, setLinkingTemplateId] = useState<string | null>(null);
 
   // Canvas Interactivity states
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [previewText, setPreviewText] = useState("Jane");
   const [previewFont, setPreviewFont] = useState("Arial");
   const [previewColor, setPreviewColor] = useState("#000000");
@@ -2193,264 +2173,41 @@ export default function TemplatesPanel() {
             />
           </div>
         </div>
-
         {/* Tab 1: Built-in Templates */}
         {activeTab === "built_in" && (
-          <table className="template-table">
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Tags</th>
-                <th style={{ textAlign: "right" }}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredBuiltIn.length === 0 ? (
-                <tr>
-                  <td colSpan={3} style={{ textAlign: "center", color: "#6d7175", padding: "40px" }}>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                      <span>No built-in templates match your search.</span>
-                      <button
-                        type="button"
-                        className="btn-text-action"
-                        style={{ border: "1px solid #babfc3", padding: "4px 12px", fontSize: "12px" }}
-                        onClick={() => setSearchTerm("")}
-                      >
-                        Clear search
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredBuiltIn.map((builtin) => (
-                  <tr key={builtin.id}>
-                    <td style={{ fontWeight: 600 }}>{builtin.name}</td>
-                    <td>
-                      {builtin.tags.map((tag, i) => (
-                        <span key={i} className="badge-tag">{tag}</span>
-                      ))}
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
-                        <button
-                          title="Preview Template Design"
-                          aria-label="Preview Template Design"
-                          className="action-icon-btn"
-                          onClick={() => {
-                            setSelectedTemplate({
-                              id: builtin.id,
-                              name: builtin.name,
-                              description: builtin.description,
-                              options: builtin.options
-                            });
-                            setIsPreviewModalOpen(true);
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                        <button
-                          title="Duplicate to Your Templates"
-                          aria-label="Duplicate to Your Templates"
-                          className="action-icon-btn"
-                          onClick={() => handleDuplicateBuiltIn(builtin)}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        </button>
-                        <button
-                          className="btn-text-action"
-                          onClick={() => handleOpenLinkModal(builtin.id)}
-                        >
-                          Use Template
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <BuiltInTemplatesTab
+            filteredBuiltIn={filteredBuiltIn}
+            setSelectedTemplate={setSelectedTemplate}
+            setIsPreviewModalOpen={setIsPreviewModalOpen}
+            handleDuplicateBuiltIn={handleDuplicateBuiltIn}
+            handleOpenLinkModal={handleOpenLinkModal}
+            setSearchTerm={setSearchTerm}
+          />
         )}
 
         {/* Tab 2: Your Custom Templates */}
         {activeTab === "yours" && (
-          <>
-            <table className="template-table">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Description</th>
-                  <th style={{ textAlign: "right" }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedTemplates.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} style={{ textAlign: "center", color: "#6d7175", padding: "40px" }}>
-                      {templates.length === 0 ? (
-                        "You haven't created any templates yet. Click \"Create new Template\" to begin."
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-                          <span>No custom templates match your search.</span>
-                          <button
-                            type="button"
-                            className="btn-text-action"
-                            style={{ border: "1px solid #babfc3", padding: "4px 12px", fontSize: "12px" }}
-                            onClick={() => setSearchTerm("")}
-                          >
-                            Clear search
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedTemplates.map((t: any) => {
-                    // Count GIDs linked to this template ID
-                    const linkedCount = products.filter((p: any) => {
-                      if (p.metafield?.value) {
-                        try {
-                          return JSON.parse(p.metafield.value).templateId === t.id;
-                        } catch (err) {}
-                      }
-                      return false;
-                    }).map((p: any) => p.id);
-
-                    return (
-                      <tr key={t.id}>
-                        <td>
-                          <button
-                            onClick={() => {
-                              setSelectedTemplate(t);
-                              setIsModalOpen(true);
-                              setCustomizerLoading(true);
-                              setCanvasZoom(100);
-                              setTimeout(() => {
-                                setCustomizerLoading(false);
-                                setTimeout(() => { initialStateRef.current = getCurrentStateSnapshot(); }, 50);
-                              }, 800);
-                            }}
-                            style={{
-                              background: "none",
-                              border: "none",
-                              padding: 0,
-                              font: "inherit",
-                              fontWeight: 700,
-                              color: "#2c3e50",
-                              cursor: "pointer",
-                              textAlign: "left"
-                            }}
-                          >
-                            {t.name}
-                          </button>
-                          {linkedCount.length > 0 && (
-                            <span style={{ marginLeft: "8px", fontSize: "11px", color: "#303030", background: "#f1f2f4", padding: "2px 6px", borderRadius: "10px", fontWeight: "bold" }}>
-                              Linked: {linkedCount.length}
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ color: "#6d7175", fontSize: "13px" }}>
-                          {t.description || <span style={{ fontStyle: "italic", color: "#b2b2b2" }}>No description provided</span>}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <div style={{ display: "inline-flex", gap: "8px", alignItems: "center" }}>
-                            <button
-                              className="btn-text-action"
-                              onClick={() => handleOpenLinkModal(t.id)}
-                            >
-                              Use Template
-                            </button>
-                            <button
-                              title="Edit Template Blueprint"
-                              aria-label="Edit Template Blueprint"
-                              className="action-icon-btn"
-                              onClick={() => {
-                                setSelectedTemplate(t);
-                                setIsModalOpen(true);
-                                setCustomizerLoading(true);
-                                setCanvasZoom(100);
-                                setTimeout(() => {
-                                  setCustomizerLoading(false);
-                                  setTimeout(() => { initialStateRef.current = getCurrentStateSnapshot(); }, 50);
-                                }, 800);
-                              }}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                            </button>
-                            <button
-                              title="Duplicate Template"
-                              aria-label="Duplicate Template"
-                              className="action-icon-btn"
-                              onClick={() => handleDuplicateTemplate(t.id)}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                            </button>
-                            <button
-                              title="Delete Template"
-                              aria-label="Delete Template"
-                              className="action-icon-btn danger"
-                              onClick={() => handleDeleteTemplate(t.id, linkedCount)}
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-            
-            {/* Pagination Controls */}
-            {totalItems > 0 && (
-              <div className="pagination-bar">
-                <div style={{ display: "flex", gap: "10px", alignItems: "center", fontSize: "13px" }}>
-                  <span>Show</span>
-                  <select
-                    value={pageSize}
-                    onChange={(e) => {
-                      setPageSize(parseInt(e.target.value));
-                      setCurrentPage(1);
-                    }}
-                    style={{ padding: "4px 8px", borderRadius: "4px", border: "1px solid #babfc3", background: "#fff" }}
-                  >
-                    {[5, 10, 15, 20, 30, 50, 100].map(size => (
-                      <option key={size} value={size}>{size}</option>
-                    ))}
-                  </select>
-                  <span style={{ color: "#6d7175" }}>
-                    Showing {Math.min(totalItems, (currentPage - 1) * pageSize + 1)} - {Math.min(totalItems, currentPage * pageSize)} of {totalItems} results
-                  </span>
-                </div>
-                
-                <div className="pagination-nav">
-                  <button
-                    className="pagination-arrow"
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  >
-                    ←
-                  </button>
-                  {Array.from({ length: totalPages }).map((_, i) => (
-                    <button
-                      key={i}
-                      className={`page-num ${currentPage === i + 1 ? "active" : ""}`}
-                      onClick={() => setCurrentPage(i + 1)}
-                    >
-                      {i + 1}
-                    </button>
-                  ))}
-                  <button
-                    className="pagination-arrow"
-                    disabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  >
-                    →
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
+          <YourTemplatesTab
+            templates={templates}
+            products={products}
+            paginatedTemplates={paginatedTemplates}
+            setSearchTerm={setSearchTerm}
+            setSelectedTemplate={setSelectedTemplate}
+            setIsModalOpen={setIsModalOpen}
+            setCustomizerLoading={setCustomizerLoading}
+            setCanvasZoom={setCanvasZoom}
+            initialStateRef={initialStateRef}
+            getCurrentStateSnapshot={getCurrentStateSnapshot}
+            handleOpenLinkModal={handleOpenLinkModal}
+            handleDuplicateTemplate={handleDuplicateTemplate}
+            handleDeleteTemplate={handleDeleteTemplate}
+            totalItems={totalItems}
+            pageSize={pageSize}
+            setPageSize={setPageSize}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            totalPages={totalPages}
+          />
         )}
       </div>
 
@@ -2578,850 +2335,80 @@ export default function TemplatesPanel() {
       )}
 
       {/* 🟢 TEMPLATE CUSTOMIZER OVERLAY MODAL */}
-      {isModalOpen && (
-        <div className="customizer-overlay">
-          <div className="customizer-card">
-            
-            {customizerLoading ? (
-              <div className="skeleton-customizer-container" style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%" }}>
-                {/* Skeleton Header */}
-                <div className="skeleton-header" style={{ height: "64px", borderBottom: "1px solid #ebebeb", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div className="skeleton-pulse" style={{ width: "24px", height: "24px", borderRadius: "50%", background: "#f0f0f0" }} />
-                    <div className="skeleton-pulse" style={{ width: "250px", height: "20px", borderRadius: "4px", background: "#f0f0f0" }} />
-                  </div>
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <div className="skeleton-pulse" style={{ width: "120px", height: "36px", borderRadius: "6px", background: "#f0f0f0" }} />
-                    <div className="skeleton-pulse" style={{ width: "120px", height: "36px", borderRadius: "6px", background: "#f0f0f0" }} />
-                  </div>
-                </div>
-                {/* Skeleton Body */}
-                <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-                  {/* Skeleton Sidebar */}
-                  <div style={{ width: "320px", borderRight: "1px solid #ebebeb", padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
-                    <div className="skeleton-pulse" style={{ width: "80px", height: "16px", borderRadius: "4px", background: "#f0f0f0" }} />
-                    <div className="skeleton-pulse" style={{ width: "100%", height: "40px", borderRadius: "6px", background: "#f0f0f0" }} />
-                    <div className="skeleton-pulse" style={{ width: "100%", height: "40px", borderRadius: "6px", background: "#f0f0f0" }} />
-                    <div className="skeleton-pulse" style={{ width: "100%", height: "40px", borderRadius: "6px", background: "#f0f0f0" }} />
-                    <div className="skeleton-pulse" style={{ width: "100%", height: "150px", borderRadius: "8px", background: "#f0f0f0" }} />
-                  </div>
-                  {/* Skeleton Canvas */}
-                  <div style={{ flex: 1, padding: "40px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f6f6f7" }}>
-                    <div className="skeleton-pulse" style={{ width: "450px", height: "450px", borderRadius: "12px", background: "#ffffff", border: "1px solid #ebebeb", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "20px", padding: "20px" }} />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* Customizer Header */}
-                <div className="customizer-header">
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <button
-                      className="customizer-btn"
-                      onClick={handleSafeClose}
-                      style={{ border: "none", background: "transparent", padding: "4px 8px", color: "#6d7175", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                      title="Close Customizer (Esc)"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                    <h2>Template Customizer: <span style={{ color: "#1a1a1a", fontWeight: "bold" }}>{templateName || "New Template"}</span></h2>
-                  </div>
-                  
-                  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-                    {/* Undo/Redo Buttons */}
-                    <div style={{ display: "flex", border: "1px solid #cbd5e1", borderRadius: "6px", background: "#ffffff", marginRight: "10px" }}>
-                      <button
-                        className="customizer-btn"
-                        onClick={handleUndo}
-                        disabled={historyIndex <= 0}
-                        title="Undo (⌘Z)"
-                        style={{ border: "none", borderRadius: "6px 0 0 6px", padding: "8px 12px", background: "transparent", cursor: historyIndex <= 0 ? "not-allowed" : "pointer", opacity: historyIndex <= 0 ? 0.4 : 1, display: "inline-flex", alignItems: "center", gap: "6px" }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
-                        Undo
-                      </button>
-                      <div style={{ width: "1px", background: "#cbd5e1" }} />
-                      <button
-                        className="customizer-btn"
-                        onClick={handleRedo}
-                        disabled={historyIndex >= optionHistory.length - 1}
-                        title="Redo (⌘⇧Z)"
-                        style={{ border: "none", borderRadius: "0 6px 6px 0", padding: "8px 12px", background: "transparent", cursor: historyIndex >= optionHistory.length - 1 ? "not-allowed" : "pointer", opacity: historyIndex >= optionHistory.length - 1 ? 0.4 : 1, display: "inline-flex", alignItems: "center", gap: "6px" }}
-                      >
-                        Redo
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
-                      </button>
-                    </div>
-                    
-                    <button
-                      className="customizer-btn"
-                      onClick={() => {
-                        setLinkingTemplateId(selectedTemplate?.id || "temp-draft");
-                        setIsLinkModalOpen(true);
-                      }}
-                      style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                      Link to Products ({linkedProducts.length})
-                    </button>
-                    <button
-                      className="customizer-btn primary"
-                      onClick={handleSaveTemplate}
-                      disabled={fetcher.state === "submitting"}
-                      style={fetcher.state === "submitting" ? { opacity: 0.7, cursor: "not-allowed", display: "inline-flex", alignItems: "center", gap: "6px" } : { display: "inline-flex", alignItems: "center", gap: "6px" }}
-                      title="Save Template (⌘S)"
-                    >
-                      {fetcher.state === "submitting" ? (
-                        <><span className="save-spinner" /> Saving...</>
-                      ) : (
-                        <>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                          Save Template
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-            {/* Split pane Workspace */}
-            <div className="customizer-pane">
-              
-              {/* LEFT SIDEBAR: Config & Elements */}
-              <div className="customizer-sidebar">
-                
-                {/* View settings tab bar */}
-                <div className="customizer-subtabs">
-                  <div className="customizer-subtab active">Main View</div>
-                </div>
-
-                {/* Sidebar Scrollable accordion panels */}
-                <div style={{ flex: 1, overflowY: "auto" }}>
-                  
-                  {/* Accordion 1: Basic Settings */}
-                  <details className="sidebar-accordion" open>
-                    <summary>Basic Settings</summary>
-                    <div className="accordion-content">
-                      <div className="input-group">
-                        <label>Template Name</label>
-                        <input
-                          type="text"
-                          className="custom-input"
-                          value={templateName}
-                          onChange={(e) => setTemplateName(e.target.value)}
-                          placeholder="e.g. Chronos C-200 Watch Face"
-                        />
-                      </div>
-                      <div className="input-group">
-                        <label>Description</label>
-                        <textarea
-                          className="custom-input"
-                          value={templateDescription}
-                          onChange={(e) => setTemplateDescription(e.target.value)}
-                          placeholder="Optional helper details..."
-                          style={{ minHeight: "60px", resize: "vertical", fontFamily: "inherit" }}
-                        />
-                      </div>
-                      <div className="input-group">
-                        <label>Form Header Title</label>
-                        <input
-                          type="text"
-                          className="custom-input"
-                          value={heading}
-                          onChange={(e) => setHeading(e.target.value)}
-                        />
-                      </div>
-                      <div className="input-group">
-                        <label style={{ display: "inline-flex", alignItems: "center" }}>
-                          Layout Mode
-                          <span className="help-tooltip-container">
-                            <span className="help-tooltip-icon">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                            </span>
-                            <span className="help-tooltip-text">Controls how personalization options are laid out on your product page (e.g., stacked list, tabs, or modal popup).</span>
-                          </span>
-                        </label>
-                        <select
-                          className="custom-input"
-                          value={layoutMode}
-                          onChange={(e) => setLayoutMode(e.target.value as any)}
-                        >
-                          <option value="stacked">Stacked Layout (Inline)</option>
-                          <option value="tabs">Dynamic Tabs</option>
-                          <option value="modal">Sleek Overlay Modal</option>
-                        </select>
-                      </div>
-                      <div className="input-group">
-                        <label>View Name</label>
-                        <input
-                          type="text"
-                          className="custom-input"
-                          value={viewName}
-                          onChange={(e) => setViewName(e.target.value)}
-                        />
-                      </div>
-                      <div className="input-group">
-                        <label>View Background</label>
-                        <div className="background-grid-picker" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginTop: "6px" }}>
-                          
-                          {/* Blank Canvas option */}
-                          <div 
-                            className={`background-grid-item ${viewBackground === "Blank Canvas" ? "active" : ""}`}
-                            onClick={() => setViewBackground("Blank Canvas")}
-                          >
-                            Blank Canvas
-                          </div>
-
-                          {/* Image Assets options */}
-                          {assets.filter(a => a.type === "IMAGE" || a.type === "IMAGES").map(a => {
-                            try {
-                              const parsed = JSON.parse(a.value);
-                              const isSelected = viewBackground === parsed.url;
-                              return (
-                                <div 
-                                  key={a.id}
-                                  className={`background-grid-item ${isSelected ? "active" : ""}`}
-                                  onClick={() => setViewBackground(parsed.url)}
-                                  title={a.name}
-                                  style={{ padding: "2px", position: "relative", overflow: "hidden" }}
-                                >
-                                  <img 
-                                    src={parsed.url} 
-                                    alt={a.name} 
-                                    style={{ width: "100%", height: "100%", minHeight: "44px", objectFit: "cover", borderRadius: "4px" }} 
-                                  />
-                                </div>
-                              );
-                            } catch(e) { return null; }
-                          })}
-
-                          {/* Custom Image URL option */}
-                          {(() => {
-                            const isCustom = viewBackground !== "Blank Canvas" && !assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } });
-                            return (
-                              <div 
-                                className={`background-grid-item ${isCustom ? "active" : ""}`}
-                                onClick={() => setViewBackground("")}
-                              >
-                                Custom URL
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        {/* Input field for Custom URL */}
-                        {(() => {
-                          const isCustom = viewBackground !== "Blank Canvas" && !assets.some(a => { try { return JSON.parse(a.value).url === viewBackground; } catch(e) { return false; } });
-                          return isCustom && (
-                            <input
-                              type="text"
-                              className="custom-input"
-                              style={{ marginTop: "8px" }}
-                              value={viewBackground}
-                              onChange={(e) => setViewBackground(e.target.value)}
-                              placeholder="Enter image URL or relative path..."
-                            />
-                          );
-                        })()}
-                      </div>
-
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                        <div className="input-group">
-                          <label style={{ display: "inline-flex", alignItems: "center" }}>
-                            Canvas Width (px)
-                            <span className="help-tooltip-container">
-                              <span className="help-tooltip-icon">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                              </span>
-                              <span className="help-tooltip-text">The logical viewport width of the design canvas. Determines aspect ratio and print/decal coordinates resolution.</span>
-                            </span>
-                          </label>
-                          <input
-                            type="number"
-                            min="500"
-                            max="5000"
-                            className="custom-input"
-                            value={canvasW}
-                            onChange={(e) => setCanvasW(Math.max(500, Math.min(5000, parseInt(e.target.value) || 1000)))}
-                          />
-                        </div>
-                        <div className="input-group">
-                          <label style={{ display: "inline-flex", alignItems: "center" }}>
-                            Canvas Height (px)
-                            <span className="help-tooltip-container">
-                              <span className="help-tooltip-icon">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                              </span>
-                              <span className="help-tooltip-text">The logical viewport height of the design canvas. Determines aspect ratio and print/decal coordinates resolution.</span>
-                            </span>
-                          </label>
-                          <input
-                            type="number"
-                            min="500"
-                            max="5000"
-                            className="custom-input"
-                            value={canvasH}
-                            onChange={(e) => setCanvasH(Math.max(500, Math.min(5000, parseInt(e.target.value) || 1000)))}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-
-                  {/* Accordion 2: Cart and Order settings */}
-                  <details className="sidebar-accordion">
-                    <summary>Cart and Order settings</summary>
-                    <div className="accordion-content">
-                      <div className="toggle-switch-wrapper">
-                        <span className="toggle-switch-label">Generate Preview Image</span>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={generatePreview}
-                            onChange={(e) => setGeneratePreview(e.target.checked)}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-                      <div className="input-group">
-                        <label>Preview Size quality</label>
-                        <select
-                          className="custom-input"
-                          value={previewSize}
-                          onChange={(e) => setPreviewSize(e.target.value)}
-                        >
-                          <option value="Compressed">Compressed JPG</option>
-                          <option value="High">Full Quality PNG</option>
-                        </select>
-                      </div>
-                      <div className="toggle-switch-wrapper">
-                        <span className="toggle-switch-label">Include Additional Files</span>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={additionalFile}
-                            onChange={(e) => setAdditionalFile(e.target.checked)}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-                      <div className="toggle-switch-wrapper">
-                        <span className="toggle-switch-label" style={{ display: "inline-flex", alignItems: "center" }}>
-                          Hide Background in order image
-                          <span className="help-tooltip-container">
-                            <span className="help-tooltip-icon">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                            </span>
-                            <span className="help-tooltip-text">If enabled, the canvas background image is excluded from the final customization image saved for order fulfillment.</span>
-                          </span>
-                        </span>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={hideBackground}
-                            onChange={(e) => setHideBackground(e.target.checked)}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-                      <div className="toggle-switch-wrapper">
-                        <span className="toggle-switch-label" style={{ display: "inline-flex", alignItems: "center" }}>
-                          Custom cart labels override
-                          <span className="help-tooltip-container">
-                            <span className="help-tooltip-icon">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                            </span>
-                            <span className="help-tooltip-text">Allows overriding Shopify cart line item titles with custom names specified under each element's customization properties.</span>
-                          </span>
-                        </span>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={customCartLabel}
-                            onChange={(e) => setCustomCartLabel(e.target.checked)}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-                    </div>
-                  </details>
-
-                  {/* Accordion 3: Element options tree */}
-                  <details className="sidebar-accordion" open>
-                    <summary>Elements Tree</summary>
-                    <div className="accordion-content">
-                      
-                      <div className="toggle-switch-wrapper" style={{ borderBottom: "1px dashed #ebebeb", paddingBottom: "10px" }}>
-                        <span className="toggle-switch-label" style={{ fontWeight: 600, color: "#6d7175", fontSize: "11px", textTransform: "uppercase" }}>Show Live Editor Bounds</span>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={livePreview}
-                            onChange={(e) => setLivePreview(e.target.checked)}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                      </div>
-
-                      {options.length === 0 ? (
-                        <div style={{ textAlign: "center", padding: "20px 0", color: "#8c9196", fontSize: "12px" }}>
-                          There are no elements under this view.
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                          {options.map((opt, idx) => {
-                            const isSelected = selectedOptionId === opt.id;
-                            return (
-                              <div
-                                key={opt.id}
-                                draggable
-                                onDragStart={(e) => {
-                                  e.dataTransfer.setData("text/plain", String(idx));
-                                  e.dataTransfer.effectAllowed = "move";
-                                }}
-                                onDragOver={(e) => {
-                                  e.preventDefault();
-                                  e.dataTransfer.dropEffect = "move";
-                                  setDragOverIdx(idx);
-                                }}
-                                onDragLeave={() => setDragOverIdx(null)}
-                                onDrop={(e) => {
-                                  e.preventDefault();
-                                  const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
-                                  handleReorderOption(fromIdx, idx);
-                                }}
-                                className={`option-card-wrapper ${dragOverIdx === idx ? "drag-over" : isSelected ? "selected" : ""}`}
-                              >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <span style={{ cursor: "grab", color: "#8c9196", display: "inline-flex", alignItems: "center" }} title="Drag to reorder">
-                                      <svg width="12" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                        <circle cx="9" cy="5" r="1"/>
-                                        <circle cx="9" cy="12" r="1"/>
-                                        <circle cx="9" cy="19" r="1"/>
-                                        <circle cx="15" cy="5" r="1"/>
-                                        <circle cx="15" cy="12" r="1"/>
-                                        <circle cx="15" cy="19" r="1"/>
-                                      </svg>
-                                    </span>
-                                    <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#1a1a1a" : "#6d7175" }}>
-                                      Option Layer #{idx + 1}
-                                    </span>
-                                  </div>
-                                  {pendingRemoveId === opt.id ? (
-                                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                                      <span style={{ fontSize: "10px", color: "#6d7175" }}>Remove?</span>
-                                      <button
-                                        onClick={() => { handleRemoveOption(opt.id); setPendingRemoveId(null); }}
-                                        style={{ border: "none", background: "#d92d20", color: "#fff", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2.5px 8px", borderRadius: "4px" }}
-                                      >
-                                        Yes
-                                      </button>
-                                      <button
-                                        onClick={() => setPendingRemoveId(null)}
-                                        style={{ border: "1px solid #cbd5e1", background: "#fff", color: "#1a1a1a", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2.5px 8px", borderRadius: "4px" }}
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setPendingRemoveId(opt.id)}
-                                      style={{ border: "none", background: "none", color: "#d92d20", fontSize: "11px", fontWeight: "bold", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "2px" }}
-                                    >
-                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                      Remove
-                                    </button>
-                                  )}
-                                </div>
-                                <input
-                                  type="text"
-                                  className="custom-input"
-                                  style={{ width: "100%", padding: "4px 8px", fontSize: "12px", marginBottom: "8px" }}
-                                  value={opt.label}
-                                  onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
-                                  onBlur={() => pushHistory(options)}
-                                />
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
-                                  <div>
-                                    <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase" }}>Type</label>
-                                    <select
-                                      className="custom-input"
-                                      style={{ width: "100%", padding: "4px", fontSize: "11px" }}
-                                      value={opt.type}
-                                      onChange={(e) => handleUpdateOptionAndPush(opt.id, { type: e.target.value as any })}
-                                    >
-                                      <option value="text">Single Line Text</option>
-                                      <option value="select">Dropdown Choice</option>
-                                      <option value="swatch">Color Swatch Palette</option>
-                                      <option value="file">File Decal Upload</option>
-                                      <option value="checkbox">Option Checkbox</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>
-                                      Upcharge ($)
-                                      <span className="help-tooltip-container">
-                                        <span className="help-tooltip-icon" style={{ marginLeft: "2px" }}>
-                                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                                        </span>
-                                        <span className="help-tooltip-text" style={{ textTransform: "none", fontWeight: "normal", fontSize: "10px", width: "140px" }}>An optional extra fee added to product base price when this option is selected.</span>
-                                      </span>
-                                    </label>
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      className="custom-input"
-                                      style={{ width: "100%", padding: "4px", fontSize: "11px" }}
-                                      value={opt.priceUpcharge}
-                                      onChange={(e) => handleUpdateOption(opt.id, { priceUpcharge: parseFloat(e.target.value) || 0 })}
-                                      onBlur={() => pushHistory(options)}
-                                    />
-                                  </div>
-                                </div>
-
-                                {/* Choices Sets */}
-                                {(opt.type === "select" || opt.type === "swatch") && (
-                                  <div style={{ marginTop: "6px", borderTop: "1px dashed #e1e3e6", paddingTop: "6px" }}>
-                                    <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "4px" }}>
-                                      <label style={{ fontSize: "10px", fontWeight: "bold" }}>Choices:</label>
-                                      <label style={{ fontSize: "10px", cursor: "pointer" }}>
-                                        <input
-                                          type="radio"
-                                          name={`choicesType-${opt.id}`}
-                                          checked={opt.choicesType !== "global"}
-                                          onChange={() => handleUpdateOptionAndPush(opt.id, { choicesType: "custom" })}
-                                        /> Custom
-                                      </label>
-                                      <label style={{ fontSize: "10px", cursor: "pointer" }}>
-                                        <input
-                                          type="radio"
-                                          name={`choicesType-${opt.id}`}
-                                          checked={opt.choicesType === "global"}
-                                          onChange={() => handleUpdateOptionAndPush(opt.id, { choicesType: "global" })}
-                                        /> Asset Link
-                                      </label>
-                                    </div>
-                                    {opt.choicesType === "global" ? (
-                                      <select
-                                        className="custom-input"
-                                        style={{ width: "100%", padding: "4px", fontSize: "11px" }}
-                                        value={opt.assetSetId || ""}
-                                        onChange={(e) => {
-                                          const asset = assets.find(a => a.id === e.target.value);
-                                          handleUpdateOptionAndPush(opt.id, { assetSetId: e.target.value, choices: asset?.value || "" });
-                                        }}
-                                      >
-                                        <option value="">Select Asset...</option>
-                                        {opt.type === "swatch"
-                                          ? colorAssets.map(c => <option key={c.id} value={c.id}>🎨 {c.name}</option>)
-                                          : optionAssets.map(o => <option key={o.id} value={o.id}>📋 {o.name}</option>)
-                                        }
-                                      </select>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        className="custom-input"
-                                        style={{ width: "100%", padding: "4px", fontSize: "11px" }}
-                                        placeholder={opt.type === "swatch" ? "#000, #fff" : "Option A, Option B"}
-                                        value={opt.choices || ""}
-                                        onChange={(e) => handleUpdateOption(opt.id, { choices: e.target.value })}
-                                        onBlur={() => pushHistory(options)}
-                                      />
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Coordinate layouts settings */}
-                                {(opt.type === "text" || opt.type === "clipart" || opt.type === "file") && (
-                                  <div style={{ marginTop: "10px", borderTop: "1px dashed #cbd5e1", paddingTop: "10px" }}>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                                      <div className="input-group">
-                                        <label style={{ fontSize: "9px" }}>X Position</label>
-                                        <input
-                                          type="number"
-                                          className="custom-input"
-                                          style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
-                                          value={opt.canvasX ?? 500}
-                                          onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
-                                          onBlur={() => pushHistory(options)}
-                                        />
-                                      </div>
-                                      <div className="input-group">
-                                        <label style={{ fontSize: "9px" }}>Y Position</label>
-                                        <input
-                                          type="number"
-                                          className="custom-input"
-                                          style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
-                                          value={opt.canvasY ?? 500}
-                                          onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
-                                          onBlur={() => pushHistory(options)}
-                                        />
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "8px" }}>
-                                      {opt.type === "text" ? (
-                                        <>
-                                          <div className="input-group">
-                                            <label style={{ fontSize: "9px" }}>Font Size</label>
-                                            <input
-                                              type="number"
-                                              className="custom-input"
-                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
-                                              value={opt.canvasFontSize ?? 80}
-                                              onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
-                                              onBlur={() => pushHistory(options)}
-                                            />
-                                          </div>
-                                          <div className="input-group">
-                                            <label style={{ fontSize: "9px" }}>Rotation (°)</label>
-                                            <input
-                                              type="number"
-                                              className="custom-input"
-                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
-                                              value={opt.canvasRotation ?? 0}
-                                              onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
-                                              onBlur={() => pushHistory(options)}
-                                            />
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <div className="input-group">
-                                            <label style={{ fontSize: "9px" }}>Width (px)</label>
-                                            <input
-                                              type="number"
-                                              className="custom-input"
-                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
-                                              value={opt.canvasWidth ?? 300}
-                                              onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
-                                              onBlur={() => pushHistory(options)}
-                                            />
-                                          </div>
-                                          <div className="input-group">
-                                            <label style={{ fontSize: "9px" }}>Height (px)</label>
-                                            <input
-                                              type="number"
-                                              className="custom-input"
-                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
-                                              value={opt.canvasHeight ?? 300}
-                                              onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
-                                              onBlur={() => pushHistory(options)}
-                                            />
-                                          </div>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <button
-                        className="customizer-btn"
-                        style={{ width: "100%", border: "1px dashed #1a1a1a", color: "#1a1a1a", display: "flex", justifyContent: "center", marginTop: "12px" }}
-                        onClick={handleAddOption}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Add New Element
-                      </button>
-                    </div>
-                  </details>
-                </div>
-              </div>
-
-              {/* RIGHT preview panels */}
-              <div className="customizer-main">
-                
-                {/* Visual Card wrapping Canvas */}
-                <div className="canvas-frame-container">
-                  {/* Info Row */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "20px", width: "100%", borderBottom: "1px solid #ebebeb", paddingBottom: "10px" }}>
-                    <span style={{ fontSize: "14px", fontWeight: "bold", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "260px" }} title={`Preview: ${templateName}`}>
-                      Preview: {templateName}
-                    </span>
-                    <span style={{ fontSize: "14px", fontWeight: "bold", color: "#1a1a1a", flexShrink: 0 }}>
-                      Upcharge Sum: ${optionPriceSum.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      width: "100%",
-                      maxWidth: "450px",
-                      height: "350px",
-                      overflow: "hidden",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      padding: "16px",
-                      background: "#fafafa",
-                      backgroundImage: "linear-gradient(45deg, #eaeaea 25%, transparent 25%), linear-gradient(-45deg, #eaeaea 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eaeaea 75%), linear-gradient(-45deg, transparent 75%, #eaeaea 75%)",
-                      backgroundSize: "20px 20px",
-                      backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
-                      borderRadius: "8px",
-                      border: "1px solid #d2d5d8",
-                      boxShadow: "inset 0 2px 8px rgba(0,0,0,0.06)",
-                      position: "relative"
-                    }}
-                    onWheel={(e) => {
-                      e.preventDefault();
-                      const delta = e.deltaY < 0 ? 5 : -5;
-                      setCanvasZoom(prev => Math.max(25, Math.min(200, prev + delta)));
-                    }}
-                  >
-                    <canvas
-                      ref={canvasRef}
-                      onMouseDown={handleCanvasMouseDown}
-                      onMouseMove={handleCanvasMouseMove}
-                      onMouseUp={handleCanvasMouseUp}
-                      onMouseLeave={handleCanvasMouseUp}
-                      className="canvas-interactive"
-                      style={{
-                        width: "100%",
-                        aspectRatio: `${canvasW}/${canvasH}`,
-                        transform: `scale(${canvasZoom / 100})`,
-                        transformOrigin: "center center",
-                        transition: "transform 0.05s ease"
-                      }}
-                    />
-
-                    {/* Absolute Overlaid Zoom Toolbars (Figma style) */}
-                    <div style={{
-                      position: "absolute",
-                      bottom: "10px",
-                      right: "10px",
-                      display: "flex",
-                      gap: "4px",
-                      background: "rgba(255, 255, 255, 0.9)",
-                      backdropFilter: "blur(4px)",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "6px",
-                      padding: "3px",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                      zIndex: 10
-                    }}>
-                      <button
-                        onClick={() => setCanvasZoom(prev => Math.max(25, prev - 10))}
-                        style={{ border: "none", background: "none", cursor: "pointer", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#6d7175" }}
-                        title="Zoom Out"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                      </button>
-                      <div style={{ width: "1px", background: "#cbd5e1" }} />
-                      <button
-                        onClick={() => setCanvasZoom(100)}
-                        style={{ border: "none", background: "none", cursor: "pointer", fontSize: "11px", padding: "4px 6px", fontWeight: "bold", color: "#1a1a1a", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
-                        title="Reset Zoom to 100%"
-                      >
-                        Reset (100%)
-                      </button>
-                      <div style={{ width: "1px", background: "#cbd5e1" }} />
-                      <button
-                        onClick={() => setCanvasZoom(prev => Math.max(25, Math.min(200, prev + 10)))}
-                        style={{ border: "none", background: "none", cursor: "pointer", padding: "4px 8px", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#6d7175" }}
-                        title="Zoom In"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Zoom controls (P2) */}
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", justifyContent: "center", marginTop: "4px" }}>
-                    <span style={{ fontSize: "12px", color: "#6d7175" }}>Zoom:</span>
-                    <button
-                      className="customizer-btn"
-                      style={{ padding: "2px 8px", fontSize: "12px" }}
-                      onClick={() => setCanvasZoom(prev => Math.max(25, prev - 10))}
-                    >
-                      -
-                    </button>
-                    <input
-                      type="range"
-                      min="25"
-                      max="200"
-                      step="5"
-                      value={canvasZoom}
-                      onChange={(e) => setCanvasZoom(parseInt(e.target.value))}
-                      style={{ flex: 1, accentColor: "#1a1a1a" }}
-                    />
-                    <button
-                      className="customizer-btn"
-                      style={{ padding: "2px 8px", fontSize: "12px" }}
-                      onClick={() => setCanvasZoom(prev => Math.max(25, Math.min(200, prev + 10)))}
-                    >
-                      +
-                    </button>
-                    <span style={{ fontSize: "12px", minWidth: "35px", textAlign: "right", fontWeight: 600 }}>{canvasZoom}%</span>
-                    <button
-                      className="customizer-btn"
-                      style={{ padding: "2px 8px", fontSize: "12px", border: "none", background: "transparent", color: "#1a1a1a", fontWeight: "bold" }}
-                      onClick={() => setCanvasZoom(100)}
-                    >
-                      Reset
-                    </button>
-                  </div>
-
-                  {/* Canvas Dynamic testing fields */}
-                  <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "12px", background: "#ffffff", border: "1px solid #ebebeb", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", padding: "16px", borderRadius: "10px", marginTop: "24px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span style={{ fontSize: "14px" }}>⚙️</span>
-                      <span style={{ fontWeight: 700, fontSize: "12px", color: "#2c3e50", letterSpacing: "0.5px", textTransform: "uppercase" }}>Interactive Tester Controls</span>
-                    </div>
-                    
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
-                      <div className="input-group">
-                        <label style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "4px" }}>Sample Text</label>
-                        <input
-                          type="text"
-                          className="custom-input"
-                          style={{ padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #babfc3" }}
-                          value={previewText}
-                          onChange={(e) => setPreviewText(e.target.value)}
-                        />
-                      </div>
-                      <div className="input-group">
-                        <label style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "4px" }}>Sample Font</label>
-                        <select
-                          className="custom-input"
-                          style={{ padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #babfc3", height: "34px" }}
-                          value={previewFont}
-                          onChange={(e) => setPreviewFont(e.target.value)}
-                        >
-                          <option value="Arial">Arial (System)</option>
-                          <option value="Times New Roman">Times New Roman</option>
-                          {fontAssets.map(f => (
-                            <option key={f.id} value={f.name}>{f.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="input-group">
-                        <label style={{ fontSize: "11px", fontWeight: 600, color: "#6d7175", marginBottom: "4px" }}>Sample Color</label>
-                        <select
-                          className="custom-input"
-                          style={{ padding: "8px 10px", fontSize: "12px", borderRadius: "6px", border: "1px solid #babfc3", height: "34px" }}
-                          value={previewColor}
-                          onChange={(e) => setPreviewColor(e.target.value)}
-                        >
-                          <option value="#000000">Black</option>
-                          <option value="#E63946">Crimson</option>
-                          <option value="#457B9D">Slate Blue</option>
-                          <option value="#1D3557">Dark Navy</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            </>
-            )}
-          </div>
-        </div>
-      )}
+      <TemplateEditorModal
+        isModalOpen={isModalOpen}
+        handleSafeClose={handleSafeClose}
+        templateName={templateName}
+        setTemplateName={setTemplateName}
+        templateDescription={templateDescription}
+        setTemplateDescription={setTemplateDescription}
+        heading={heading}
+        setHeading={setHeading}
+        layoutMode={layoutMode}
+        setLayoutMode={setLayoutMode}
+        brandColor={brandColor}
+        setBrandColor={setBrandColor}
+        buttonColor={buttonColor}
+        setButtonColor={setButtonColor}
+        buttonTextColor={buttonTextColor}
+        setButtonTextColor={setButtonTextColor}
+        options={options}
+        viewName={viewName}
+        setViewName={setViewName}
+        viewBackground={viewBackground}
+        setViewBackground={setViewBackground}
+        canvasW={canvasW}
+        setCanvasW={setCanvasW}
+        canvasH={canvasH}
+        setCanvasH={setCanvasH}
+        generatePreview={generatePreview}
+        setGeneratePreview={setGeneratePreview}
+        previewSize={previewSize}
+        setPreviewSize={setPreviewSize}
+        additionalFile={additionalFile}
+        setAdditionalFile={setAdditionalFile}
+        hideBackground={hideBackground}
+        setHideBackground={setHideBackground}
+        customCartLabel={customCartLabel}
+        setCustomCartLabel={setCustomCartLabel}
+        livePreview={livePreview}
+        setLivePreview={setLivePreview}
+        linkedProducts={linkedProducts}
+        assets={assets}
+        fetcher={fetcher}
+        handleUndo={handleUndo}
+        handleRedo={handleRedo}
+        historyIndex={historyIndex}
+        optionHistory={optionHistory}
+        selectedTemplate={selectedTemplate}
+        setIsLinkModalOpen={setIsLinkModalOpen}
+        setLinkingTemplateId={setLinkingTemplateId}
+        handleSaveTemplate={handleSaveTemplate}
+        canvasZoom={canvasZoom}
+        setCanvasZoom={setCanvasZoom}
+        previewText={previewText}
+        setPreviewText={setPreviewText}
+        previewFont={previewFont}
+        setPreviewFont={setPreviewFont}
+        previewColor={previewColor}
+        setPreviewColor={setPreviewColor}
+        canvasRef={canvasRef}
+        selectedOptionId={selectedOptionId}
+        setSelectedOptionId={setSelectedOptionId}
+        handleCanvasMouseDown={handleCanvasMouseDown}
+        handleCanvasMouseMove={handleCanvasMouseMove}
+        handleCanvasMouseUp={handleCanvasMouseUp}
+        handleAddOption={handleAddOption}
+        handleUpdateOption={handleUpdateOption}
+        handleUpdateOptionAndPush={handleUpdateOptionAndPush}
+        pendingRemoveId={pendingRemoveId}
+        setPendingRemoveId={setPendingRemoveId}
+        handleRemoveOption={handleRemoveOption}
+        dragOverIdx={dragOverIdx}
+        setDragOverIdx={setDragOverIdx}
+        handleReorderOption={handleReorderOption}
+        customizerLoading={customizerLoading}
+      />
 
       {/* 👁️ BUILT-IN TEMPLATE PREVIEW MODAL */}
       {isPreviewModalOpen && selectedTemplate && (
@@ -3514,77 +2501,14 @@ export default function TemplatesPanel() {
       )}
 
       {/* 🔗 PRODUCT LINKER SELECTION MODAL */}
-      {isLinkModalOpen && (
-        <div className="generic-modal-overlay">
-          <div className="generic-modal-card">
-            <div className="generic-modal-header">
-              <h3>Link template to Shopify store products</h3>
-              <button
-                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
-                onClick={() => setIsLinkModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="generic-modal-body" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <span style={{ fontSize: "13px", color: "#6d7175" }}>
-                Select the products below to synchronize and enable this template configuration. Previously linked products that you uncheck will have their configurations disabled.
-              </span>
-              
-              <div style={{
-                maxHeight: "300px",
-                overflowY: "auto",
-                border: "1px solid #ebebeb",
-                borderRadius: "6px",
-                padding: "8px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                {products.length === 0 ? (
-                  <span style={{ padding: "20px", textAlign: "center", color: "#8c9196" }}>No products found in this store</span>
-                ) : (
-                  products.map((p: any) => {
-                    const isLinked = linkedProducts.includes(p.id);
-                    return (
-                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", background: isLinked ? "#fafafa" : "#ffffff", border: isLinked ? "1px solid #1a1a1a" : "1px solid #cbd5e1", transition: "all 0.1s ease" }}>
-                        <input
-                          type="checkbox"
-                          checked={isLinked}
-                          onChange={() => toggleProductLink(p.id)}
-                          style={{ accentColor: "#1a1a1a", cursor: "pointer" }}
-                        />
-                        {p.featuredImage?.url ? (
-                          <img src={p.featuredImage.url} alt="" style={{ width: "32px", height: "32px", objectFit: "cover", borderRadius: "4px" }} />
-                        ) : (
-                          <div style={{ width: "32px", height: "32px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
-                        )}
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#1a1a1a" }}>{p.title}</span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="generic-modal-footer">
-              <button
-                className="customizer-btn"
-                onClick={() => setIsLinkModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="customizer-btn primary"
-                onClick={handleSaveProductLinks}
-              >
-                Apply Links
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProductLinkerModal
+        isLinkModalOpen={isLinkModalOpen}
+        setIsLinkModalOpen={setIsLinkModalOpen}
+        products={products}
+        linkedProducts={linkedProducts}
+        toggleProductLink={toggleProductLink}
+        handleSaveProductLinks={handleSaveProductLinks}
+      />
 
       {/* ⚠️ UNSAVED CHANGES CONFIRMATION MODAL */}
       {isCloseConfirmOpen && (

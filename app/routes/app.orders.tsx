@@ -2,8 +2,12 @@ import { useLoaderData, useFetcher } from "react-router";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { OrdersFilterTabs } from "../components/orders/OrdersFilterTabs";
+import { OrdersToolbar } from "../components/orders/OrdersToolbar";
+import { OrdersBulkActionBar } from "../components/orders/OrdersBulkActionBar";
+import { OrdersTable } from "../components/orders/OrdersTable";
 
 interface CustomAttribute {
   key: string;
@@ -713,366 +717,47 @@ export default function OrdersDashboard() {
 
         <div className="orders-dashboard-wrapper">
           {/* Quick Filter Horizontal Tabs */}
-          <div className="orders-tabs">
-            <button
-              type="button"
-              className={`tab-btn ${filterStatus === "all" ? "active" : ""}`}
-              onClick={() => setFilterStatus("all")}
-            >
-              All Orders ({logs.length})
-            </button>
-            <button
-              type="button"
-              className={`tab-btn ${filterStatus === "completed" ? "active" : ""}`}
-              onClick={() => setFilterStatus("completed")}
-            >
-              🟢 Completed ({logs.filter(l => l.status.toLowerCase() === "completed").length})
-            </button>
-            <button
-              type="button"
-              className={`tab-btn ${filterStatus === "pending" ? "active" : ""}`}
-              onClick={() => setFilterStatus("pending")}
-            >
-              🟡 Pending ({logs.filter(l => l.status.toLowerCase() === "pending").length})
-            </button>
-            <button
-              type="button"
-              className={`tab-btn ${filterStatus === "failed" ? "active" : ""}`}
-              onClick={() => setFilterStatus("failed")}
-            >
-              🔴 Failed ({logs.filter(l => l.status.toLowerCase() === "failed").length})
-            </button>
-          </div>
+          <OrdersFilterTabs
+            filterStatus={filterStatus}
+            setFilterStatus={setFilterStatus}
+            logs={logs}
+          />
 
           {/* Search, Date Range, & Sync Toolbar */}
-          <div className="toolbar-wrapper">
-            <div className="filter-tools">
-              <div className="search-wrapper">
-                <span className="search-icon">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                </span>
-                <input
-                  type="text"
-                  placeholder="Search by Order ID..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="orders-input search-input"
-                />
-              </div>
-
-              <div className="date-picker-wrapper">
-                <span>From:</span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="orders-input"
-                />
-                <span>To:</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="orders-input"
-                />
-                {(startDate || endDate) && (
-                  <button
-                    type="button"
-                    onClick={() => { setStartDate(""); setEndDate(""); }}
-                    style={{ background: "none", border: "none", color: "#c5221f", cursor: "pointer", fontSize: "12px", fontWeight: "bold" }}
-                  >
-                    Clear Dates
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSyncOrders}
-              disabled={syncing}
-              className="sync-btn"
-            >
-              {syncing ? (
-                <>🔄 Syncing Shopify Orders...</>
-              ) : (
-                <>🔄 Sync Recent Orders</>
-              )}
-            </button>
-          </div>
+          <OrdersToolbar
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            handleSyncOrders={handleSyncOrders}
+            syncing={syncing}
+          />
 
           {/* Bulk Selection Actions Bar */}
-          {selectedLogIds.length > 0 && (
-            <div className="bulk-actions-bar">
-              <span className="bulk-selection-count">
-                {selectedLogIds.length} customized orders selected
-              </span>
-              <div className="bulk-actions-buttons">
-                <button
-                  type="button"
-                  onClick={handleBulkDownload}
-                  className="bulk-btn bulk-download-btn"
-                >
-                  📦 Download Selected ZIPs
-                </button>
-                <button
-                  type="button"
-                  onClick={handleBulkDelete}
-                  className="bulk-btn bulk-delete-btn"
-                >
-                  🗑️ Delete selected logs
-                </button>
-              </div>
-            </div>
-          )}
+          <OrdersBulkActionBar
+            selectedCount={selectedLogIds.length}
+            handleBulkDownload={handleBulkDownload}
+            handleBulkDelete={handleBulkDelete}
+          />
 
           {/* Orders Log Table card */}
-          {filteredLogs.length === 0 ? (
-            <div className="empty-state-card">
-              <div className="empty-state-title">No Recent Orders Found</div>
-              <div>
-                There are currently no customized orders that match your filter parameters.
-                Click &quot;Sync Recent Orders&quot; to fetch recent sales from your store database.
-              </div>
-            </div>
-          ) : (
-            <div className="table-card">
-              <table className="orders-table">
-                <thead>
-                  <tr>
-                    <th className="checkbox-cell">
-                      <input
-                        type="checkbox"
-                        checked={paginatedLogs.length > 0 && paginatedLogs.every(l => selectedLogIds.includes(l.id))}
-                        onChange={() => handleSelectAll(paginatedLogs)}
-                        className="checkbox-input"
-                      />
-                    </th>
-                    <th>Order ID</th>
-                    <th>Sync Time</th>
-                    <th>Fulfillment Status</th>
-                    <th>Manufacturing File</th>
-                    <th>Fulfillment ZIP</th>
-                    <th style={{ width: "60px", textAlign: "right" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedLogs.map(log => {
-                    const isCompleted = log.status === "COMPLETED";
-                    const isFailed = log.status === "FAILED";
-                    const isExpanded = expandedLogId === log.id;
-                    const isChecked = selectedLogIds.includes(log.id);
-
-                    return (
-                      <Fragment key={log.id}>
-                        <tr
-                          className={isExpanded ? "expanded" : ""}
-                          onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
-                        >
-                          <td className="checkbox-cell" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleSelectRow(log.id)}
-                              className="checkbox-input"
-                            />
-                          </td>
-                          <td style={{ fontWeight: 600, color: "#2c6ecb" }}>
-                            #{log.orderId}
-                          </td>
-                          <td style={{ color: "#6d7175" }}>
-                            {new Date(log.createdAt).toLocaleString()}
-                          </td>
-                          <td>
-                            <span className={`status-badge ${
-                              isCompleted ? "badge-completed" : isFailed ? "badge-failed" : "badge-pending"
-                            }`}>
-                              {log.status.toLowerCase()}
-                            </span>
-                            {log.error && (
-                              <div style={{ fontSize: "11px", color: "#c5221f", marginTop: "4px" }}>
-                                ⚠️ {log.error}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            {log.printFileUrl ? (
-                              <a
-                                href={log.printFileUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="action-link"
-                              >
-                                📄 View SVG Layout
-                              </a>
-                            ) : (
-                              <span style={{ color: "#6d7175", fontStyle: "italic" }}>
-                                {isCompleted ? "Generic SVG Cached" : "Compiling..."}
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            <a
-                              href={`/apps/personalizer/download?orderId=${log.orderId}`}
-                              download
-                              onClick={(e) => e.stopPropagation()}
-                              className="zip-download-btn"
-                            >
-                              📦 Download ZIP
-                            </a>
-                          </td>
-                          <td style={{ textAlign: "right" }} onClick={(e) => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteRow(log.id)}
-                              title="Delete Order Log"
-                              className="row-delete-btn"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="3 6 5 6 21 6"></polyline>
-                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                              </svg>
-                            </button>
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr className="expanded-row" style={{ background: "#fdfdfd" }}>
-                            <td colSpan={7} style={{ padding: "16px 24px", borderBottom: "1px solid #e1e3e5" }}>
-                              <div className="expanded-details-wrapper">
-                                <h4 className="details-title">
-                                  📋 Personalization Manufacturing Coordinates Log
-                                </h4>
-                                
-                                <div className="details-grid">
-                                  <div>
-                                    <span className="details-section-label">Registered Options Attributes:</span>
-                                    <table className="details-table">
-                                      <tbody>
-                                        <tr>
-                                          <td className="label-col">Product Type:</td>
-                                          <td className="val-col">Custom Personalized Chronograph</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Custom Text:</td>
-                                          <td className="val-col">&quot;H.N.&quot;</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Selected Typography:</td>
-                                          <td className="val-col">Cursive Elegant (TTF)</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Selected Color Hex:</td>
-                                          <td className="val-col" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                            <span style={{ width: "10px", height: "10px", borderRadius: "50%", background: "#3E2723", border: "1px solid #d2d5d8" }} />
-                                            #3E2723 (Dark Brown)
-                                          </td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Upcharge Added:</td>
-                                          <td className="val-col" style={{ color: "#008060" }}>+$5.00</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                  
-                                  <div>
-                                    <span className="details-section-label">Visual Positioning Offsets:</span>
-                                    <table className="details-table">
-                                      <tbody>
-                                        <tr>
-                                          <td className="label-col">X Coordinate Offset:</td>
-                                          <td className="val-col offset-font">400 px</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Y Coordinate Offset:</td>
-                                          <td className="val-col offset-font">380 px</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Scale Factor Dimension:</td>
-                                          <td className="val-col offset-font">200 W x 100 H</td>
-                                        </tr>
-                                        <tr>
-                                          <td className="label-col">Rotation Angle Degrees:</td>
-                                          <td className="val-col offset-font">0°</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Footer Controls & Pagination */}
-          {filteredLogs.length > 0 && (
-            <div className="footer-wrapper">
-              <div className="page-size-selector">
-                <span>Show:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => { setPageSize(parseInt(e.target.value)); setCurrentPage(1); }}
-                  className="orders-input"
-                  style={{ padding: "6px 8px" }}
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={15}>15</option>
-                  <option value={20}>20</option>
-                  <option value={30}>30</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-                <span>
-                  Showing {Math.min(filteredLogs.length, (currentPage - 1) * pageSize + 1)} - {Math.min(filteredLogs.length, currentPage * pageSize)} of {filteredLogs.length} results
-                </span>
-              </div>
-
-              <div className="pagination-controls">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  className="pagination-arrow"
-                  title="Previous Page"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6"></polyline>
-                  </svg>
-                </button>
-                <span className="page-indicator">
-                  Page {currentPage} of {totalPages || 1}
-                </span>
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages || totalPages === 0}
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  className="pagination-arrow"
-                  title="Next Page"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-              </div>
-
-              <div className="help-links">
-                <a href="#docs" className="help-link"> Documentation</a>
-                <a href="#contact" className="help-link"> Contact Us</a>
-              </div>
-            </div>
-          )}
+          <OrdersTable
+            paginatedLogs={paginatedLogs}
+            selectedLogIds={selectedLogIds}
+            handleSelectRow={handleSelectRow}
+            handleSelectAll={handleSelectAll}
+            expandedLogId={expandedLogId}
+            setExpandedLogId={setExpandedLogId}
+            handleDeleteRow={handleDeleteRow}
+            filteredLogsCount={filteredLogs.length}
+            pageSize={pageSize}
+            setPageSize={setPageSize}
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            totalPages={totalPages}
+          />
         </div>
       </s-section>
     </s-page>
