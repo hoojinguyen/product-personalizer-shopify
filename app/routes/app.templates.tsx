@@ -3,7 +3,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { PersonalizationConfigSync } from "../utils/templateSync";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
 
 // The GraphQL query to fetch store products for link selection
@@ -324,25 +324,6 @@ export default function TemplatesPanel() {
   const [newTemplateError, setNewTemplateError] = useState("");
   const [selectedStyleCard, setSelectedStyleCard] = useState<"watch" | "neon" | "pillow" | "generic">("generic");
 
-  // Customizer Loading Skeleton Status
-  const [customizerLoading, setCustomizerLoading] = useState(false);
-
-  // Undo/Redo options history tracking states
-  const [optionHistory, setOptionHistory] = useState<CustomizationOption[][]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-
-  const pushHistory = (newOptions: CustomizationOption[]) => {
-    const updatedHistory = optionHistory.slice(0, historyIndex + 1);
-    updatedHistory.push(JSON.parse(JSON.stringify(newOptions)));
-    setOptionHistory(updatedHistory);
-    setHistoryIndex(updatedHistory.length - 1);
-  };
-
-  // Preview and Linker modal statuses
-  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
-  const [linkingTemplateId, setLinkingTemplateId] = useState<string | null>(null);
-
   // Template Form Configuration States
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
@@ -376,6 +357,81 @@ export default function TemplatesPanel() {
   // Pagination for Your Templates
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+
+  // Customizer Loading Skeleton Status
+  const [customizerLoading, setCustomizerLoading] = useState(false);
+
+  // Unsaved changes tracking (P0)
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
+  const initialStateRef = useRef<string>("");
+
+  // Element removal confirmation (P1)
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null);
+
+  // Canvas zoom (P2)
+  const [canvasZoom, setCanvasZoom] = useState(100);
+
+  // Element reordering drag state (P2)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  // Undo/Redo options history tracking states
+  const [optionHistory, setOptionHistory] = useState<CustomizationOption[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  const pushHistory = (newOptions: CustomizationOption[]) => {
+    const updatedHistory = optionHistory.slice(0, historyIndex + 1);
+    updatedHistory.push(JSON.parse(JSON.stringify(newOptions)));
+    setOptionHistory(updatedHistory);
+    setHistoryIndex(updatedHistory.length - 1);
+  };
+
+  // Compute current state snapshot for dirty tracking (P0)
+  const getCurrentStateSnapshot = useCallback(() => {
+    return JSON.stringify({
+      templateName, templateDescription, heading, layoutMode,
+      brandColor, buttonColor, buttonTextColor, viewName, viewBackground,
+      canvasW, canvasH, generatePreview, previewSize, additionalFile,
+      hideBackground, customCartLabel, options, linkedProducts
+    });
+  }, [templateName, templateDescription, heading, layoutMode, brandColor,
+      buttonColor, buttonTextColor, viewName, viewBackground, canvasW, canvasH,
+      generatePreview, previewSize, additionalFile, hideBackground,
+      customCartLabel, options, linkedProducts]);
+
+  const isDirty = isModalOpen && initialStateRef.current !== "" && getCurrentStateSnapshot() !== initialStateRef.current;
+
+  // Safe close handler — checks for unsaved changes before closing (P0)
+  const handleSafeClose = useCallback(() => {
+    if (isDirty) {
+      setIsCloseConfirmOpen(true);
+    } else {
+      setIsModalOpen(false);
+      setCanvasZoom(100);
+    }
+  }, [isDirty]);
+
+  const handleForceClose = () => {
+    setIsCloseConfirmOpen(false);
+    setIsModalOpen(false);
+    setCanvasZoom(100);
+  };
+
+  // Element reorder handler (P2)
+  const handleReorderOption = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const newOptions = [...options];
+    const [moved] = newOptions.splice(fromIdx, 1);
+    newOptions.splice(toIdx, 0, moved);
+    setOptions(newOptions);
+    pushHistory(newOptions);
+    setDragOverIdx(null);
+  };
+
+
+  // Preview and Linker modal statuses
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkingTemplateId, setLinkingTemplateId] = useState<string | null>(null);
 
   // Canvas Interactivity states
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -737,6 +793,61 @@ export default function TemplatesPanel() {
     }
   }, [fetcher.data, shopify]);
 
+  // Keyboard shortcuts for the Customizer (P1)
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      const isInput = tag === "input" || tag === "textarea" || tag === "select";
+      const isMeta = e.metaKey || e.ctrlKey;
+
+      // Ctrl+S / Cmd+S → Save
+      if (isMeta && e.key === "s") {
+        e.preventDefault();
+        handleSaveTemplate();
+        return;
+      }
+
+      // Ctrl+Z / Cmd+Z → Undo (without Shift)
+      if (isMeta && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Ctrl+Shift+Z / Ctrl+Y → Redo
+      if ((isMeta && e.key === "z" && e.shiftKey) || (isMeta && e.key === "y")) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
+
+      // Escape → Close with dirty check
+      if (e.key === "Escape" && !isInput) {
+        e.preventDefault();
+        // Don't close if a sub-modal is open
+        if (!isLinkModalOpen && !isPreviewModalOpen && !isCloseConfirmOpen) {
+          handleSafeClose();
+        } else if (isCloseConfirmOpen) {
+          setIsCloseConfirmOpen(false);
+        }
+        return;
+      }
+
+      // Delete/Backspace → Remove selected element (only when not in an input)
+      if ((e.key === "Delete" || e.key === "Backspace") && !isInput && selectedOptionId) {
+        e.preventDefault();
+        setPendingRemoveId(selectedOptionId);
+        return;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isModalOpen, isLinkModalOpen, isPreviewModalOpen, isCloseConfirmOpen, selectedOptionId, handleSafeClose]);
+
+
   const getCanvasMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -977,13 +1088,25 @@ export default function TemplatesPanel() {
   };
 
   const handleConfirmCreateTemplate = () => {
-    if (!newTemplateName.trim()) {
-      setNewTemplateError("Template name is required");
-      return;
+    let defaultName = "";
+    let defaultDesc = "";
+
+    if (selectedStyleCard === "watch") {
+      defaultName = "New Watch Preset Template";
+      defaultDesc = "Monogram engraving and strap options preset config.";
+    } else if (selectedStyleCard === "neon") {
+      defaultName = "New Neon Sign Template";
+      defaultDesc = "Dynamic glow sign preset config.";
+    } else if (selectedStyleCard === "pillow") {
+      defaultName = "New Custom Monogram Pillow Template";
+      defaultDesc = "Large text initials centerpiece preset config.";
+    } else {
+      defaultName = "New Custom Template";
+      defaultDesc = "A fresh blank custom template configuration.";
     }
 
-    setTemplateName(newTemplateName);
-    setTemplateDescription(newTemplateDesc);
+    setTemplateName(defaultName);
+    setTemplateDescription(defaultDesc);
     
     let activePreset: CustomizationOption[] = [];
 
@@ -1104,8 +1227,11 @@ export default function TemplatesPanel() {
 
     setIsModalOpen(true);
     setCustomizerLoading(true);
+    setCanvasZoom(100);
     setTimeout(() => {
       setCustomizerLoading(false);
+      // Capture initial state snapshot for dirty tracking after state has settled
+      setTimeout(() => { initialStateRef.current = getCurrentStateSnapshot(); }, 50);
     }, 800);
   };
 
@@ -1834,6 +1960,82 @@ export default function TemplatesPanel() {
             background-position: -200% 0;
           }
         }
+
+        /* Tooltip styling */
+        .help-tooltip-container {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          margin-left: 6px;
+          cursor: help;
+        }
+
+        .help-tooltip-icon {
+          color: #8c9196;
+          transition: color 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+        }
+
+        .help-tooltip-icon:hover {
+          color: #5c5f62;
+        }
+
+        .help-tooltip-text {
+          visibility: hidden;
+          position: absolute;
+          bottom: 125%;
+          left: 50%;
+          transform: translateX(-50%);
+          background-color: #303030;
+          color: #ffffff;
+          text-align: center;
+          padding: 6px 10px;
+          border-radius: 6px;
+          font-size: 11px;
+          line-height: 1.4;
+          white-space: normal;
+          width: 180px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          opacity: 0;
+          transition: opacity 0.2s, transform 0.2s;
+          z-index: 10005;
+          pointer-events: none;
+          font-weight: normal;
+          text-transform: none;
+        }
+
+        .help-tooltip-text::after {
+          content: "";
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          margin-left: -5px;
+          border-width: 5px;
+          border-style: solid;
+          border-color: #303030 transparent transparent transparent;
+        }
+
+        .help-tooltip-container:hover .help-tooltip-text {
+          visibility: visible;
+          opacity: 1;
+          transform: translateX(-50%) translateY(-2px);
+        }
+
+        /* Save Button Spinner */
+        .save-spinner {
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-radius: 50%;
+          border-top-color: #ffffff;
+          animation: save-spin 0.6s linear infinite;
+          margin-right: 4px;
+        }
+        @keyframes save-spin {
+          to { transform: rotate(360deg); }
+        }
       `}</style>
 
       {/* 🔴 TEMPLATES LIST VIEW */}
@@ -2016,7 +2218,11 @@ export default function TemplatesPanel() {
                               setSelectedTemplate(t);
                               setIsModalOpen(true);
                               setCustomizerLoading(true);
-                              setTimeout(() => setCustomizerLoading(false), 800);
+                              setCanvasZoom(100);
+                              setTimeout(() => {
+                                setCustomizerLoading(false);
+                                setTimeout(() => { initialStateRef.current = getCurrentStateSnapshot(); }, 50);
+                              }, 800);
                             }}
                             style={{
                               background: "none",
@@ -2056,7 +2262,11 @@ export default function TemplatesPanel() {
                                 setSelectedTemplate(t);
                                 setIsModalOpen(true);
                                 setCustomizerLoading(true);
-                                setTimeout(() => setCustomizerLoading(false), 800);
+                                setCanvasZoom(100);
+                                setTimeout(() => {
+                                  setCustomizerLoading(false);
+                                  setTimeout(() => { initialStateRef.current = getCurrentStateSnapshot(); }, 50);
+                                }, 800);
                               }}
                             >
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -2154,35 +2364,6 @@ export default function TemplatesPanel() {
             </div>
             
             <div className="generic-modal-body" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Template Name <span style={{ color: "#d32f2f" }}>*</span></label>
-                <input
-                  type="text"
-                  className="custom-input"
-                  placeholder="e.g. Vintage Leather Engraving"
-                  value={newTemplateName}
-                  onChange={(e) => {
-                    setNewTemplateName(e.target.value);
-                    if (newTemplateError) setNewTemplateError("");
-                  }}
-                  style={{ width: "100%", padding: "8px 12px", border: newTemplateError ? "1.5px solid #d32f2f" : "1px solid #babfc3", borderRadius: "6px" }}
-                />
-                {newTemplateError && (
-                  <span style={{ fontSize: "12px", color: "#d32f2f", fontWeight: 500 }}>{newTemplateError}</span>
-                )}
-              </div>
-
-              <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Description</label>
-                <textarea
-                  className="custom-input"
-                  placeholder="Describe what this template configures..."
-                  value={newTemplateDesc}
-                  onChange={(e) => setNewTemplateDesc(e.target.value)}
-                  style={{ width: "100%", padding: "8px 12px", border: "1px solid #babfc3", borderRadius: "6px", minHeight: "80px", resize: "vertical" }}
-                />
-              </div>
-
               <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Select Style Category / Thumbnail</label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
@@ -2332,7 +2513,7 @@ export default function TemplatesPanel() {
                   <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                     <button
                       className="customizer-btn"
-                      onClick={() => setIsModalOpen(false)}
+                      onClick={handleSafeClose}
                       style={{ border: "none", background: "transparent", fontSize: "16px", padding: "4px 8px" }}
                     >
                       ✕
@@ -2347,7 +2528,7 @@ export default function TemplatesPanel() {
                         className="customizer-btn"
                         onClick={handleUndo}
                         disabled={historyIndex <= 0}
-                        title="Undo Change"
+                        title="Undo (⌘Z)"
                         style={{ border: "none", borderRadius: "6px 0 0 6px", padding: "8px 12px", background: "transparent", cursor: historyIndex <= 0 ? "not-allowed" : "pointer", opacity: historyIndex <= 0 ? 0.4 : 1 }}
                       >
                         ↩ Undo
@@ -2357,7 +2538,7 @@ export default function TemplatesPanel() {
                         className="customizer-btn"
                         onClick={handleRedo}
                         disabled={historyIndex >= optionHistory.length - 1}
-                        title="Redo Change"
+                        title="Redo (⌘⇧Z)"
                         style={{ border: "none", borderRadius: "0 6px 6px 0", padding: "8px 12px", background: "transparent", cursor: historyIndex >= optionHistory.length - 1 ? "not-allowed" : "pointer", opacity: historyIndex >= optionHistory.length - 1 ? 0.4 : 1 }}
                       >
                         Redo ↪
@@ -2376,8 +2557,15 @@ export default function TemplatesPanel() {
                     <button
                       className="customizer-btn primary"
                       onClick={handleSaveTemplate}
+                      disabled={fetcher.state === "submitting"}
+                      style={fetcher.state === "submitting" ? { opacity: 0.7, cursor: "not-allowed" } : {}}
+                      title="Save Template (⌘S)"
                     >
-                      💾 Save Template
+                      {fetcher.state === "submitting" ? (
+                        <><span className="save-spinner" /> Saving...</>
+                      ) : (
+                        <>💾 Save Template</>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -2412,12 +2600,12 @@ export default function TemplatesPanel() {
                       </div>
                       <div className="input-group">
                         <label>Description</label>
-                        <input
-                          type="text"
+                        <textarea
                           className="custom-input"
                           value={templateDescription}
                           onChange={(e) => setTemplateDescription(e.target.value)}
                           placeholder="Optional helper details..."
+                          style={{ minHeight: "60px", resize: "vertical", fontFamily: "inherit" }}
                         />
                       </div>
                       <div className="input-group">
@@ -2430,7 +2618,15 @@ export default function TemplatesPanel() {
                         />
                       </div>
                       <div className="input-group">
-                        <label>Layout Mode</label>
+                        <label style={{ display: "inline-flex", alignItems: "center" }}>
+                          Layout Mode
+                          <span className="help-tooltip-container">
+                            <span className="help-tooltip-icon">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </span>
+                            <span className="help-tooltip-text">Controls how personalization options are laid out on your product page (e.g., stacked list, tabs, or modal popup).</span>
+                          </span>
+                        </label>
                         <select
                           className="custom-input"
                           value={layoutMode}
@@ -2554,7 +2750,15 @@ export default function TemplatesPanel() {
 
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                         <div className="input-group">
-                          <label>Canvas Width (px)</label>
+                          <label style={{ display: "inline-flex", alignItems: "center" }}>
+                            Canvas Width (px)
+                            <span className="help-tooltip-container">
+                              <span className="help-tooltip-icon">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                              </span>
+                              <span className="help-tooltip-text">The logical viewport width of the design canvas. Determines aspect ratio and print/decal coordinates resolution.</span>
+                            </span>
+                          </label>
                           <input
                             type="number"
                             min="500"
@@ -2565,7 +2769,15 @@ export default function TemplatesPanel() {
                           />
                         </div>
                         <div className="input-group">
-                          <label>Canvas Height (px)</label>
+                          <label style={{ display: "inline-flex", alignItems: "center" }}>
+                            Canvas Height (px)
+                            <span className="help-tooltip-container">
+                              <span className="help-tooltip-icon">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                              </span>
+                              <span className="help-tooltip-text">The logical viewport height of the design canvas. Determines aspect ratio and print/decal coordinates resolution.</span>
+                            </span>
+                          </label>
                           <input
                             type="number"
                             min="500"
@@ -2617,7 +2829,15 @@ export default function TemplatesPanel() {
                         </label>
                       </div>
                       <div className="toggle-switch-wrapper">
-                        <span className="toggle-switch-label">Hide Background in order image</span>
+                        <span className="toggle-switch-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                          Hide Background in order image
+                          <span className="help-tooltip-container">
+                            <span className="help-tooltip-icon">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </span>
+                            <span className="help-tooltip-text">If enabled, the canvas background image is excluded from the final customization image saved for order fulfillment.</span>
+                          </span>
+                        </span>
                         <label className="toggle-switch">
                           <input
                             type="checkbox"
@@ -2628,7 +2848,15 @@ export default function TemplatesPanel() {
                         </label>
                       </div>
                       <div className="toggle-switch-wrapper">
-                        <span className="toggle-switch-label">Custom cart labels override</span>
+                        <span className="toggle-switch-label" style={{ display: "inline-flex", alignItems: "center" }}>
+                          Custom cart labels override
+                          <span className="help-tooltip-container">
+                            <span className="help-tooltip-icon">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            </span>
+                            <span className="help-tooltip-text">Allows overriding Shopify cart line item titles with custom names specified under each element's customization properties.</span>
+                          </span>
+                        </span>
                         <label className="toggle-switch">
                           <input
                             type="checkbox"
@@ -2669,23 +2897,62 @@ export default function TemplatesPanel() {
                             return (
                               <div
                                 key={opt.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("text/plain", String(idx));
+                                  e.dataTransfer.effectAllowed = "move";
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.dataTransfer.dropEffect = "move";
+                                  setDragOverIdx(idx);
+                                }}
+                                onDragLeave={() => setDragOverIdx(null)}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+                                  handleReorderOption(fromIdx, idx);
+                                }}
                                 style={{
-                                  border: isSelected ? "1px solid #008060" : "1px solid #ebebeb",
+                                  border: dragOverIdx === idx ? "2px dashed #008060" : isSelected ? "1px solid #008060" : "1px solid #ebebeb",
                                   background: isSelected ? "#f4fbf7" : "#fafafa",
                                   padding: "12px",
-                                  borderRadius: "8px"
+                                  borderRadius: "8px",
+                                  cursor: "grab",
+                                  transition: "border 0.15s ease"
                                 }}
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                                  <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#008060" : "#2c3e50" }}>
-                                    Option Layer #{idx + 1}
-                                  </span>
-                                  <button
-                                    onClick={() => handleRemoveOption(opt.id)}
-                                    style={{ border: "none", background: "none", color: "#d93838", fontSize: "11px", fontWeight: "bold", cursor: "pointer" }}
-                                  >
-                                    Remove
-                                  </button>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <span style={{ cursor: "grab", color: "#8c9196", fontSize: "14px", letterSpacing: "-2px", userSelect: "none" }} title="Drag to reorder">⋮⋮</span>
+                                    <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#008060" : "#2c3e50" }}>
+                                      Option Layer #{idx + 1}
+                                    </span>
+                                  </div>
+                                  {pendingRemoveId === opt.id ? (
+                                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                      <span style={{ fontSize: "10px", color: "#6d7175" }}>Remove?</span>
+                                      <button
+                                        onClick={() => { handleRemoveOption(opt.id); setPendingRemoveId(null); }}
+                                        style={{ border: "none", background: "#d93838", color: "#fff", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2px 8px", borderRadius: "4px" }}
+                                      >
+                                        Yes
+                                      </button>
+                                      <button
+                                        onClick={() => setPendingRemoveId(null)}
+                                        style={{ border: "1px solid #babfc3", background: "#fff", color: "#2c3e50", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2px 8px", borderRadius: "4px" }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setPendingRemoveId(opt.id)}
+                                      style={{ border: "none", background: "none", color: "#d93838", fontSize: "11px", fontWeight: "bold", cursor: "pointer" }}
+                                    >
+                                      Remove
+                                    </button>
+                                  )}
                                 </div>
                                 <input
                                   type="text"
@@ -2712,7 +2979,15 @@ export default function TemplatesPanel() {
                                     </select>
                                   </div>
                                   <div>
-                                    <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase" }}>Upcharge ($)</label>
+                                    <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>
+                                      Upcharge ($)
+                                      <span className="help-tooltip-container">
+                                        <span className="help-tooltip-icon" style={{ marginLeft: "2px" }}>
+                                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                        </span>
+                                        <span className="help-tooltip-text" style={{ textTransform: "none", fontWeight: "normal", fontSize: "10px", width: "140px" }}>An optional extra fee added to product base price when this option is selected.</span>
+                                      </span>
+                                    </label>
                                     <input
                                       type="number"
                                       step="0.01"
@@ -2889,19 +3164,78 @@ export default function TemplatesPanel() {
                     <span style={{ fontSize: "14px", fontWeight: "bold", color: "#008060" }}>Upcharge Sum: ${optionPriceSum.toFixed(2)}</span>
                   </div>
 
-                  <canvas
-                    ref={canvasRef}
-                    onMouseDown={handleCanvasMouseDown}
-                    onMouseMove={handleCanvasMouseMove}
-                    onMouseUp={handleCanvasMouseUp}
-                    onMouseLeave={handleCanvasMouseUp}
-                    className="canvas-interactive"
+                  <div
                     style={{
                       width: "100%",
                       maxWidth: "450px",
-                      aspectRatio: `${canvasW}/${canvasH}`
+                      overflow: "hidden",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      padding: "16px",
+                      background: "#fafafa",
+                      borderRadius: "8px",
+                      border: "1px dashed #d2d5d8",
+                      position: "relative"
                     }}
-                  />
+                    onWheel={(e) => {
+                      e.preventDefault();
+                      const delta = e.deltaY < 0 ? 5 : -5;
+                      setCanvasZoom(prev => Math.max(25, Math.min(200, prev + delta)));
+                    }}
+                  >
+                    <canvas
+                      ref={canvasRef}
+                      onMouseDown={handleCanvasMouseDown}
+                      onMouseMove={handleCanvasMouseMove}
+                      onMouseUp={handleCanvasMouseUp}
+                      onMouseLeave={handleCanvasMouseUp}
+                      className="canvas-interactive"
+                      style={{
+                        width: "100%",
+                        aspectRatio: `${canvasW}/${canvasH}`,
+                        transform: `scale(${canvasZoom / 100})`,
+                        transformOrigin: "center center",
+                        transition: "transform 0.05s ease"
+                      }}
+                    />
+                  </div>
+
+                  {/* Zoom controls (P2) */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", width: "100%", justifyContent: "center", marginTop: "4px" }}>
+                    <span style={{ fontSize: "12px", color: "#6d7175" }}>Zoom:</span>
+                    <button
+                      className="customizer-btn"
+                      style={{ padding: "2px 8px", fontSize: "12px" }}
+                      onClick={() => setCanvasZoom(prev => Math.max(25, prev - 10))}
+                    >
+                      -
+                    </button>
+                    <input
+                      type="range"
+                      min="25"
+                      max="200"
+                      step="5"
+                      value={canvasZoom}
+                      onChange={(e) => setCanvasZoom(parseInt(e.target.value))}
+                      style={{ flex: 1, accentColor: "#008060" }}
+                    />
+                    <button
+                      className="customizer-btn"
+                      style={{ padding: "2px 8px", fontSize: "12px" }}
+                      onClick={() => setCanvasZoom(prev => Math.max(25, Math.min(200, prev + 10)))}
+                    >
+                      +
+                    </button>
+                    <span style={{ fontSize: "12px", minWidth: "35px", textAlign: "right", fontWeight: 600 }}>{canvasZoom}%</span>
+                    <button
+                      className="customizer-btn"
+                      style={{ padding: "2px 8px", fontSize: "12px", border: "none", background: "transparent", color: "#008060" }}
+                      onClick={() => setCanvasZoom(100)}
+                    >
+                      Reset
+                    </button>
+                  </div>
 
                   {/* Canvas Dynamic testing fields */}
                   <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", background: "#f8f9fa", padding: "12px", borderRadius: "8px", marginTop: "6px" }}>
@@ -3116,6 +3450,44 @@ export default function TemplatesPanel() {
                 onClick={handleSaveProductLinks}
               >
                 Apply Links
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⚠️ UNSAVED CHANGES CONFIRMATION MODAL */}
+      {isCloseConfirmOpen && (
+        <div className="generic-modal-overlay">
+          <div className="generic-modal-card" style={{ width: "420px" }}>
+            <div className="generic-modal-header">
+              <h3 style={{ margin: 0, color: "#d93838", display: "flex", alignItems: "center", gap: "6px" }}>
+                ⚠️ Discard Unsaved Changes?
+              </h3>
+              <button
+                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
+                onClick={() => setIsCloseConfirmOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="generic-modal-body">
+              <p style={{ margin: 0, fontSize: "14px", color: "#2c3e50", lineHeight: "1.5" }}>
+                You have unsaved changes in your template. If you close the customizer now, all unsaved changes will be lost.
+              </p>
+            </div>
+            <div className="generic-modal-footer">
+              <button
+                className="customizer-btn"
+                onClick={() => setIsCloseConfirmOpen(false)}
+              >
+                Keep Editing
+              </button>
+              <button
+                className="customizer-btn danger"
+                onClick={handleForceClose}
+              >
+                Discard Changes
               </button>
             </div>
           </div>
