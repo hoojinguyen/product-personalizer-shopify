@@ -1,5 +1,3 @@
-import React from "react";
-
 interface OrdersBulkActionBarProps {
   selectedCount: number;
   handleBulkDownload: () => void;
@@ -16,7 +14,7 @@ export function OrdersBulkActionBar({
   return (
     <div className="bulk-actions-bar">
       <div className="bulk-selection-count">
-        Selected {selectedCount} orders for batch execution
+        Selected {selectedCount} {selectedCount === 1 ? "order" : "orders"}
       </div>
       <div className="bulk-actions-buttons">
         <button
@@ -24,14 +22,14 @@ export function OrdersBulkActionBar({
           onClick={handleBulkDownload}
           className="bulk-btn bulk-download-btn"
         >
-          📦 Bulk Download Packages
+          Download Packages
         </button>
         <button
           type="button"
           onClick={handleBulkDelete}
           className="bulk-btn bulk-delete-btn"
         >
-          🗑️ Bulk Delete Logs
+          Delete Selected
         </button>
       </div>
     </div>

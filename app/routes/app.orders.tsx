@@ -160,6 +160,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   return { error: "Unknown intent" };
 };
 
+const SyncIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+  <svg
+    viewBox="0 0 24 24"
+    width="14"
+    height="14"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" />
+  </svg>
+);
+
 export default function OrdersDashboard() {
   const { logs } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -244,7 +260,7 @@ export default function OrdersDashboard() {
     );
   };
 
-  const handleSelectAll = (visibleLogs: typeof logs) => {
+  const handleSelectAll = (visibleLogs: { id: string }[]) => {
     const visibleIds = visibleLogs.map(l => l.id);
     const allSelected = visibleIds.every(id => selectedLogIds.includes(id));
     
@@ -286,65 +302,52 @@ export default function OrdersDashboard() {
   const paginatedLogs = filteredLogs.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <s-page heading="Orders Customization Portal">
+    <s-page heading="Orders">
+
       <style>{`
-        .orders-dashboard-wrapper {
-          font-family: -apple-system, BlinkMacSystemFont, "San Francisco", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-          color: #202223;
-        }
-        
         /* Tab Filter Bar */
         .orders-tabs {
           display: flex;
-          gap: 4px;
-          border-bottom: 1px solid #e1e3e5;
-          margin-bottom: 20px;
-          padding-bottom: 4px;
+          background: #fafafa;
+          border-bottom: 1px solid #ebebeb;
+          padding: 0 16px;
         }
         .tab-btn {
           background: none;
           border: none;
-          padding: 8px 16px;
+          padding: 14px 20px;
           font-size: 14px;
-          font-weight: 500;
+          font-weight: 600;
           color: #6d7175;
           cursor: pointer;
-          border-radius: 6px 6px 0 0;
-          transition: all 0.15s ease;
+          border-bottom: 3px solid transparent;
+          transition: all 0.2s ease;
           position: relative;
         }
         .tab-btn:hover {
-          background: #f1f2f4;
-          color: #202223;
+          color: #1a1a1a;
         }
         .tab-btn.active {
-          color: #008060;
-          font-weight: 600;
-        }
-        .tab-btn.active::after {
-          content: "";
-          position: absolute;
-          bottom: -5px;
-          left: 0;
-          right: 0;
-          height: 3px;
-          background: #008060;
-          border-radius: 3px 3px 0 0;
+          color: #1a1a1a;
+          border-bottom-color: #1a1a1a;
         }
 
-        /* Filter Controls */
+        /* Filter Controls & Toolbar */
         .toolbar-wrapper {
           display: flex;
           justify-content: space-between;
           align-items: center;
           gap: 16px;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
+          padding: 16px;
+          border-bottom: 1px solid #ebebeb;
+          background: #ffffff;
         }
         .filter-tools {
           display: flex;
           gap: 12px;
           align-items: center;
+          width: 100%;
+          justify-content: space-between;
           flex-wrap: wrap;
         }
         .search-wrapper {
@@ -354,76 +357,181 @@ export default function OrdersDashboard() {
         }
         .search-icon {
           position: absolute;
-          left: 10px;
+          left: 12px;
           color: #8c9196;
+          display: flex;
+          align-items: center;
         }
         .orders-input {
           padding: 8px 12px;
-          border: 1px solid #babfc3;
-          border-radius: 8px;
-          font-size: 13px;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          font-size: 14px;
           background: #ffffff;
-          color: #202223;
+          color: #1a1a1a;
           box-sizing: border-box;
-          transition: border-color 0.15s ease;
+          outline: none;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          transition: border-color 0.15s, box-shadow 0.15s;
         }
         .orders-input:focus {
-          border-color: #008060;
-          outline: none;
-          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.08);
+          border-color: #1a1a1a;
+          box-shadow: 0 0 0 1px #1a1a1a, 0 0 0 3px rgba(26, 26, 26, 0.15);
         }
         .search-input {
-          padding-left: 32px;
-          width: 220px;
+          padding-left: 36px;
+          width: 240px;
         }
-        .date-picker-wrapper {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          color: #6d7175;
-        }
-        .sync-btn {
-          background: #008060;
-          color: #ffffff;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 8px;
-          font-weight: 600;
-          font-size: 13px;
-          cursor: pointer;
+
+        /* Custom Dropdown Date Picker */
+        .date-picker-trigger-btn {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          transition: background 0.15s;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          padding: 8px 12px;
+          font-size: 13px;
+          font-weight: 600;
+          color: #202223;
+          cursor: pointer;
+          transition: background-color 0.15s, border-color 0.15s;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          outline: none;
         }
-        .sync-btn:hover:not(:disabled) {
-          background: #006e52;
+        .date-picker-trigger-btn:hover {
+          background-color: #f6f6f7;
+          border-color: #94a3b8;
         }
-        .sync-btn:disabled {
-          background: #f1f2f4;
+        .calendar-icon, .chevron-icon {
+          color: #6d7175;
+        }
+        .date-picker-dropdown-popover {
+          position: absolute;
+          right: 0;
+          top: 40px;
+          z-index: 100;
+          background: #ffffff;
+          border: 1.5px solid #ebebeb;
+          border-radius: 8px;
+          padding: 16px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+          min-width: 280px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .date-inputs-row {
+          display: flex;
+          gap: 10px;
+        }
+        .date-input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          flex: 1;
+        }
+        .date-input-group label {
+          font-size: 11px;
+          font-weight: 600;
+          color: #6d7175;
+          text-transform: uppercase;
+        }
+        .date-field-input {
+          width: 100%;
+          padding: 6px 10px;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          font-size: 13px;
+        }
+        .date-picker-footer {
+          display: flex;
+          justify-content: flex-end;
+          align-items: center;
+          gap: 10px;
+          margin-top: 4px;
+        }
+        .clear-dates-btn {
+          background: none;
+          border: none;
+          color: #d92d20;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 4px;
+        }
+        .apply-dates-btn {
+          background: #1a1a1a;
+          color: #ffffff;
+          border: none;
+          border-radius: 4px;
+          padding: 6px 12px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.15s;
+        }
+        .apply-dates-btn:hover {
+          background: #303030;
+        }
+
+        /* Page sync button (top actions) */
+        .orders-page-sync-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #ffffff;
+          color: #202223;
+          border: 1px solid #cbd5e1;
+          border-radius: 6px;
+          padding: 8px 14px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: background-color 0.15s ease, border-color 0.15s ease;
+          line-height: 1;
+          outline: none;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        .orders-page-sync-btn:hover:not(:disabled) {
+          background-color: #f6f6f7;
+          border-color: #94a3b8;
+        }
+        .orders-page-sync-btn:disabled {
+          background-color: #f1f2f4;
           color: #8c9196;
           cursor: not-allowed;
-          border: 1px solid #e1e3e5;
-          box-shadow: none;
+          border-color: #cbd5e1;
+        }
+        .sync-icon-wrapper {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .sync-icon-wrapper.spinning {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
         }
 
         /* Bulk Action Bar */
         .bulk-actions-bar {
+          background: #f8fafc;
+          border: 1.5px solid #ebebeb;
+          border-radius: 8px;
+          padding: 12px 18px;
+          margin: 16px 20px;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          background: #002e25;
-          color: #ffffff;
-          padding: 10px 16px;
-          border-radius: 8px;
-          margin-bottom: 16px;
-          animation: slideDown 0.2s ease-out;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
         }
         .bulk-selection-count {
-          font-weight: 600;
           font-size: 13px;
+          font-weight: 600;
+          color: #1a1a1a;
         }
         .bulk-actions-buttons {
           display: flex;
@@ -431,7 +539,7 @@ export default function OrdersDashboard() {
         }
         .bulk-btn {
           border: none;
-          padding: 6px 12px;
+          padding: 8px 14px;
           border-radius: 6px;
           font-weight: 600;
           font-size: 12px;
@@ -442,32 +550,37 @@ export default function OrdersDashboard() {
           transition: all 0.15s;
         }
         .bulk-download-btn {
-          background: #008060;
-          color: #ffffff;
+          background: #ffffff;
+          border: 1px solid #cbd5e1;
+          color: #1a1a1a;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
         .bulk-download-btn:hover {
-          background: #006e52;
+          background: #f6f6f7;
+          border-color: #94a3b8;
         }
         .bulk-delete-btn {
-          background: #c5221f;
+          background: #d82c0d;
           color: #ffffff;
         }
         .bulk-delete-btn:hover {
-          background: #a51d1a;
+          background: #be250a;
         }
 
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
+        /* Unified Card container */
+        .orders-card-container {
+          background: #ffffff;
+          border-radius: 12px;
+          border: 1px solid #ebebeb;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+          overflow: hidden;
+          margin-top: 20px;
         }
 
-        /* Table Card */
+        /* Table Card and styling */
         .table-card {
           background: #ffffff;
-          border: 1px solid #e1e3e5;
-          border-radius: 8px;
           overflow: hidden;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         }
         .orders-table {
           width: 100%;
@@ -476,27 +589,27 @@ export default function OrdersDashboard() {
           font-size: 13px;
         }
         .orders-table th {
-          padding: 10px 16px;
+          padding: 14px 16px;
           font-weight: 600;
-          color: #202223;
-          background: #f9fafb;
-          border-bottom: 1px solid #e1e3e5;
+          color: #6d7175;
+          background: #fafafa;
+          border-bottom: 1px solid #ebebeb;
           user-select: none;
+          text-transform: uppercase;
+          font-size: 12px;
         }
         .orders-table td {
-          padding: 12px 16px;
-          border-bottom: 1px solid #e1e3e5;
+          padding: 16px;
+          border-bottom: 1px solid #f3f3f3;
           color: #202223;
-        }
-        .orders-table tbody tr {
-          transition: background 0.15s;
+          vertical-align: middle;
         }
         .orders-table tbody tr:not(.expanded-row):hover {
-          background: #f9fafb;
+          background: #fcfcfc;
           cursor: pointer;
         }
         .orders-table tbody tr.expanded {
-          background: #f4f6f8;
+          background: #fafafa;
         }
         .checkbox-cell {
           width: 24px;
@@ -515,7 +628,7 @@ export default function OrdersDashboard() {
         .status-badge {
           display: inline-flex;
           align-items: center;
-          padding: 3px 8px;
+          padding: 3px 10px;
           border-radius: 12px;
           font-size: 11px;
           font-weight: 600;
@@ -535,55 +648,46 @@ export default function OrdersDashboard() {
         }
 
         /* Action Buttons */
-        .action-link {
+        .download-zip-link {
           color: #008060;
           font-weight: 600;
           text-decoration: none;
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
+          font-size: 13px;
         }
-        .action-link:hover {
+        .download-zip-link:hover {
           text-decoration: underline;
         }
-        .zip-download-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 6px 12px;
-          background: #2c3e50;
-          color: #fff;
-          border-radius: 6px;
-          font-size: 11px;
-          font-weight: 600;
+        .view-svg-link {
+          color: #6d7175;
+          font-weight: 500;
           text-decoration: none;
-          border: none;
-          cursor: pointer;
-          transition: background 0.15s;
+          font-size: 13px;
         }
-        .zip-download-btn:hover {
-          background: #1a252f;
+        .view-svg-link:hover {
+          color: #1a1a1a;
+          text-decoration: underline;
         }
-        .row-delete-btn {
+        .row-delete-action-btn {
           background: none;
           border: none;
-          color: #c5221f;
+          color: #6d7175;
           cursor: pointer;
-          padding: 4px;
+          padding: 6px;
           border-radius: 4px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          transition: all 0.15s;
+          transition: all 0.15s ease;
         }
-        .row-delete-btn:hover {
-          background: #fce8e6;
+        .row-delete-action-btn:hover {
+          color: #d92d20;
+          background: #fde8e8;
         }
 
         /* Expander Coordinates Panel */
         .expanded-details-wrapper {
           background: #ffffff;
-          border: 1px solid #e1e3e5;
+          border: 1px solid #ebebeb;
           border-radius: 8px;
           padding: 16px;
           box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
@@ -633,29 +737,38 @@ export default function OrdersDashboard() {
         }
 
         /* Empty state */
-        .empty-state-card {
-          padding: 48px;
-          border: 1px dashed #babfc3;
-          border-radius: 8px;
-          text-align: center;
-          background: #fafbfb;
-          color: #6d7175;
+        .empty-state-wrapper {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          max-width: 400px;
+          margin: 0 auto;
         }
-        .empty-state-title {
-          font-size: 15px;
-          font-weight: 600;
+        .empty-state-heading {
+          font-size: 14px;
+          font-weight: 700;
           color: #202223;
-          margin-bottom: 4px;
+          letter-spacing: 0.05em;
+          margin: 0;
+        }
+        .empty-state-subheading {
+          font-size: 11px;
+          font-weight: 600;
+          color: #6d7175;
+          letter-spacing: 0.05em;
+          margin: 0;
         }
 
         /* Pagination & Footer */
-        .footer-wrapper {
+        .pagination-bar {
+          padding: 14px 16px;
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-top: 20px;
-          flex-wrap: wrap;
-          gap: 12px;
+          border-top: 1px solid #ebebeb;
+          background: #fafafa;
         }
         .page-size-selector {
           display: flex;
@@ -664,18 +777,26 @@ export default function OrdersDashboard() {
           font-size: 13px;
           color: #6d7175;
         }
-        .pagination-controls {
+        .orders-input.size-select {
+          padding: 4px 8px;
+          border: 1px solid #cbd5e1;
+          border-radius: 4px;
+          background: #fff;
+          cursor: pointer;
+        }
+        .pagination-nav {
           display: flex;
           align-items: center;
           gap: 8px;
         }
-        .page-indicator {
+        .page-num-indicator {
           font-size: 13px;
+          font-weight: 600;
           color: #202223;
         }
         .pagination-arrow {
           background: #ffffff;
-          border: 1px solid #babfc3;
+          border: 1px solid #cbd5e1;
           border-radius: 6px;
           width: 32px;
           height: 32px;
@@ -692,74 +813,74 @@ export default function OrdersDashboard() {
         .pagination-arrow:disabled {
           opacity: 0.4;
           cursor: not-allowed;
-          border-color: #e1e3e5;
+          border-color: #cbd5e1;
           color: #8c9196;
-        }
-        .help-links {
-          display: flex;
-          gap: 16px;
-        }
-        .help-link {
-          color: #008060;
-          text-decoration: none;
-          font-size: 13px;
-          font-weight: 500;
-        }
-        .help-link:hover {
-          text-decoration: underline;
         }
       `}</style>
 
-      <s-section heading="Personalized Orders Fulfillment Command Center">
-        <s-paragraph>
-          Track buyer customizations and sync manufacturing files. Select an order to review detailed coordinates or bulk-download full **Fulfillment Packages** as compressed ZIP files to route directly to laser engravers or screenprint shops.
-        </s-paragraph>
-
-        <div className="orders-dashboard-wrapper">
-          {/* Quick Filter Horizontal Tabs */}
-          <OrdersFilterTabs
-            filterStatus={filterStatus}
-            setFilterStatus={setFilterStatus}
-            logs={logs}
-          />
-
-          {/* Search, Date Range, & Sync Toolbar */}
-          <OrdersToolbar
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            startDate={startDate}
-            setStartDate={setStartDate}
-            endDate={endDate}
-            setEndDate={setEndDate}
-            handleSyncOrders={handleSyncOrders}
-            syncing={syncing}
-          />
-
-          {/* Bulk Selection Actions Bar */}
-          <OrdersBulkActionBar
-            selectedCount={selectedLogIds.length}
-            handleBulkDownload={handleBulkDownload}
-            handleBulkDelete={handleBulkDelete}
-          />
-
-          {/* Orders Log Table card */}
-          <OrdersTable
-            paginatedLogs={paginatedLogs}
-            selectedLogIds={selectedLogIds}
-            handleSelectRow={handleSelectRow}
-            handleSelectAll={handleSelectAll}
-            expandedLogId={expandedLogId}
-            setExpandedLogId={setExpandedLogId}
-            handleDeleteRow={handleDeleteRow}
-            filteredLogsCount={filteredLogs.length}
-            pageSize={pageSize}
-            setPageSize={setPageSize}
-            currentPage={currentPage}
-            setCurrentPage={setCurrentPage}
-            totalPages={totalPages}
-          />
+      <div className="orders-card-container">
+        {/* Card Header matching Templates & Product Options pages */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 20px 16px 20px" }}>
+          <div>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1a1a1a" }}>Orders</h2>
+            <p style={{ fontSize: "13px", color: "#6d7175", margin: "4px 0 0 0" }}>
+              Track buyer customizations, sync manufacturing files, and download fulfillment packages.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSyncOrders}
+            disabled={syncing}
+            className="orders-page-sync-btn"
+          >
+            <span className={`sync-icon-wrapper ${syncing ? "spinning" : ""}`} style={{ marginRight: "6px" }}>
+              <SyncIcon />
+            </span>
+            {syncing ? "Syncing..." : "Sync Orders"}
+          </button>
         </div>
-      </s-section>
+
+        {/* Quick Filter Horizontal Tabs */}
+        <OrdersFilterTabs
+          filterStatus={filterStatus}
+          setFilterStatus={setFilterStatus}
+          logs={logs}
+        />
+
+        {/* Search, Date Range Toolbar */}
+        <OrdersToolbar
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          startDate={startDate}
+          setStartDate={setStartDate}
+          endDate={endDate}
+          setEndDate={setEndDate}
+        />
+
+        {/* Bulk Selection Actions Bar */}
+        <OrdersBulkActionBar
+          selectedCount={selectedLogIds.length}
+          handleBulkDownload={handleBulkDownload}
+          handleBulkDelete={handleBulkDelete}
+        />
+
+        {/* Orders Log Table card */}
+        <OrdersTable
+          paginatedLogs={paginatedLogs}
+          selectedLogIds={selectedLogIds}
+          handleSelectRow={handleSelectRow}
+          handleSelectAll={handleSelectAll}
+          expandedLogId={expandedLogId}
+          setExpandedLogId={setExpandedLogId}
+          handleDeleteRow={handleDeleteRow}
+          filteredLogsCount={filteredLogs.length}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          totalPages={totalPages}
+        />
+      </div>
     </s-page>
   );
 }

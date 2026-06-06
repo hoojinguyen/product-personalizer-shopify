@@ -1,5 +1,3 @@
-import React from "react";
-
 interface OrderLog {
   id: string;
   orderId: string;
@@ -26,28 +24,28 @@ export function OrdersFilterTabs({
         className={`tab-btn ${filterStatus === "all" ? "active" : ""}`}
         onClick={() => setFilterStatus("all")}
       >
-        All Orders ({logs.length})
+        All ({logs.length})
       </button>
       <button
         type="button"
         className={`tab-btn ${filterStatus === "completed" ? "active" : ""}`}
         onClick={() => setFilterStatus("completed")}
       >
-        🟢 Completed ({logs.filter(l => l.status.toLowerCase() === "completed").length})
+        Completed ({logs.filter(l => l.status.toLowerCase() === "completed").length})
       </button>
       <button
         type="button"
         className={`tab-btn ${filterStatus === "pending" ? "active" : ""}`}
         onClick={() => setFilterStatus("pending")}
       >
-        🟡 Pending ({logs.filter(l => l.status.toLowerCase() === "pending").length})
+        Pending ({logs.filter(l => l.status.toLowerCase() === "pending").length})
       </button>
       <button
         type="button"
         className={`tab-btn ${filterStatus === "failed" ? "active" : ""}`}
         onClick={() => setFilterStatus("failed")}
       >
-        🔴 Failed ({logs.filter(l => l.status.toLowerCase() === "failed").length})
+        Failed ({logs.filter(l => l.status.toLowerCase() === "failed").length})
       </button>
     </div>
   );
