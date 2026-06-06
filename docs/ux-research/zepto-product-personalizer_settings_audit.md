@@ -1,8 +1,8 @@
-# UI/UX Research & Audit: Zepto Product Personalizer settings page
+# UI/UX Research & Audit: Zepto Product Personalizer Settings Page (Sidebar & Content Area)
 
-* **Date:** 2026-06-04
+* **Date:** 2026-06-06
 * **Target URL:** [https://admin.shopify.com/store/africazones-store/apps/product-personalizer/settings](https://admin.shopify.com/store/africazones-store/apps/product-personalizer/settings)
-* **Focus Area:** The Settings tab in Zepto Product Personalizer
+* **Focus Area:** Sidebar and Content Area Layout & Interactions
 
 ---
 
@@ -28,6 +28,8 @@
 
 The **Settings** page is the configuration hub for merchant-facing customization styles, translation strings, validation constraints, and code integrations within the **Zepto Product Personalizer** Shopify application. Its primary utility is to empower merchants to align the storefront personalization widget with their store brand, manage user inputs, define pricing formats, and configure custom CSS/JS styling rules.
 
+This audit focuses specifically on the **left sidebar category navigation** and the **main content panels**, evaluating how they display configuration fields, how they interact, and how well they comply with modern design standards.
+
 ---
 
 ## 2. User Persona
@@ -47,10 +49,10 @@ The **Settings** page is the configuration hub for merchant-facing customization
 
 ## 3. Key Features & Functionalities
 
-### 1. Sidebar Category Menu
-* **Visual & Aesthetic Design:** A simple vertical navigation drawer on the left side of the iframe listing twelve settings sections (Installation, Styling, Popup Settings, etc.). It uses black standard sans-serif typography with generous line heights.
-* **Trigger & Interaction:** Click-based navigation. Clicking any item loads the corresponding settings panel dynamically in the main content container.
-* **Validation & Logic Checks:** Highlighting the currently selected option using a visual focus/active style.
+### 1. Left Sidebar Category Menu
+* **Visual & Aesthetic Design:** A vertical navigation list on the left side of the iframe listing settings categories (Installation, Styling, Popup Settings, Text & Textarea, etc.). It has a width of `209px` and uses dark slate grey semi-bold typography (`13px` sans-serif, font-weight `550`).
+* **Trigger & Interaction:** Click-based navigation. Clicking any item loads the corresponding settings panel dynamically in the main content container. Interactive hover states transition normal list items to 2% opacity black (`rgba(0, 0, 0, 0.02)`).
+* **Validation & Logic Checks:** Active item selection highlights the current row in 5% opacity black (`rgba(0, 0, 0, 0.05)`) with rounded corners (`border-radius: 8px`) and a fixed height of `32px`. No independent scrolling is present.
 
 ### 2. Styling Configurator & Live Mockup Preview
 * **Visual & Aesthetic Design:** Form groups containing toggle switches, color well boxes next to hex code text inputs, and 4-directional spinbuttons for margins/paddings. On the right, it features an interactive mock storefront mockup.
@@ -66,6 +68,19 @@ The **Settings** page is the configuration hub for merchant-facing customization
 * **Visual & Aesthetic Design:** A multi-line textarea with a monospace font.
 * **Trigger & Interaction:** Allows merchants to write direct CSS stylesheet overrides targeting storefront elements.
 * **Validation & Logic Checks:** Simple textarea input. Does not perform real-time syntactical validation on custom CSS stylesheets.
+
+### 3.1 UI Component & Element Inventory
+
+| Component / Element Name | Type (Button, Dropdown, Toggle, Card, Input) | Default State / Value | Layout Placement & Parent Container |
+| :--- | :--- | :--- | :--- |
+| **Sidebar Menu Container** | Menu List | 12 Navigation Items | Left column: `ul.nav.settings-sidebar-ul` |
+| **Sidebar active item** | Menu Item | Selected Category (`li.content-changer.active`) | Within sidebar menu list |
+| **Form Cards** | Card | White card wrapper | Main content: `div.settings_page` |
+| **Toggle Switches** | Toggle | Checked or Unchecked | Inside form cards |
+| **Text Inputs & Textareas** | Input / Textarea | Default labels, placeholders, or code | Inside form cards |
+| **Color Pickers** | Color Box + Text | Hex code + Visual swatch | Inside styling form cards |
+| **Paddings & Margins** | Number Spinbutton | Numeric values in pixels | Inside styling cards |
+| **Live Mockup Preview** | Mock Viewer | Floating Mug widget layout | Right side of Styling tab workspace |
 
 ---
 
@@ -96,9 +111,9 @@ Zepto Settings Root
 │  └─ Sticky Save/Discard Notification Bar (App Bridge Context)
 ├─ Shopify App Navigation (Product Options, Templates, Settings)
 └─ Zepto Cross-Origin Iframe Container (cdn-zeptoapps.com/settings)
-   ├─ Left Sidebar Category Panel
+   ├─ Left Sidebar Category Panel (width: 209px, overflow-y: visible)
    │  ├─ Installation
-   │  ├─ Styling
+   │  ├─ Styling (active content changes)
    │  ├─ Popup Settings
    │  ├─ Text & Textarea
    │  ├─ Image Upload
@@ -109,14 +124,32 @@ Zepto Settings Root
    │  ├─ Additional Pricing
    │  ├─ Custom CSS
    │  └─ Custom JS
-   └─ Main Category Content Panel (Dynamic)
+   └─ Main Category Content Panel (width: 950px, dynamic)
       ├─ Dynamic Form Groups (Toggles, Inputs, Color Wells)
       └─ Live Storefront Preview Mockup Panel (Floating on the Right under Styling)
 ```
 
 ---
 
-## 5. UI/UX Analysis (Core Audit)
+## 5. Visual Styling System (Color, Typography, Spacing)
+
+### Left Sidebar Navigation Styles
+* **Layout Structure**: Vertically aligned flexbox (`display: flex`, `flex-direction: column`) with `width: 209px`, `margin: 0px`, and `padding: 0px`. List items (`li.content-changer`) have compact spacing: `margin-bottom: 2px` (`margin: 0px 0px 2px`).
+* **Typography**: Font-family is inherited `sans-serif` from the Shopify frame. Font-size is `13px` and font-weight is `550` (semi-bold) in both normal and active states. Colors are set to `rgb(48, 48, 48)` (dark slate grey).
+* **Active State styling**: Identified by the `.active` class (`li.content-changer.active`). It switches from a transparent background to a grey background `rgba(0, 0, 0, 0.05)` (5% black opacity) with rounded borders (`border-radius: 8px`) and height `32px`.
+* **Hover styling**: Triggers a background color shift to `rgba(0, 0, 0, 0.02)` (2% black opacity).
+* **Scroll behavior**: Sidebar menu does not scroll independently (`overflow-y: visible`). Relies entirely on the outer viewport's page scroll.
+
+### Main Content Area Styles
+* **Layout Structure**: Renders adjacent to the sidebar menu with a wrapper of `div.settings_page.w-100.h-100` and an active width of `950px`.
+* **Forms & Cards**: Utilizes Polaris-style cards (`.Polaris-Card` / `.form-wrapper`) with `margin: 0px 0px 20px` to separate blocks.
+* **Text Inputs & Monospace fields**: Standard text inputs and large textareas (`textarea.form-control.w-100`) have a `border-radius: 8px`, `border: 1px solid rgb(138, 138, 138)`, and `padding: 6px`.
+* **Color Pickers**: Form rows feature parallel alignment of color swatch inputs (`ColorWell`) and hex text input boxes (e.g., `#ffffff`, `#27A9E1`).
+* **Spacing Spinbuttons**: Numerical input fields (`spinbutton` inputs) allow adjusting margins and paddings in pixels.
+
+---
+
+## 6. UI/UX Analysis (Core Audit)
 
 ### Heuristic Evaluation
 
@@ -139,7 +172,7 @@ Zepto Settings Root
 
 ---
 
-## 6. Technical UI Design Deliverables
+## 7. Technical UI Design Deliverables
 
 ### Low-Fidelity UX Skeleton Wireframe
 
@@ -153,9 +186,22 @@ Zepto Settings Root
 
 *The mockup skins the wireframe using cohesive Polaris design tokens, including modern switch layouts, rounded border panels, subtle container card drop shadows, clean typography, and a polished live preview component with a mock customizer mockup.*
 
+### Visual Redesign Design Tokens
+* **Primary Branding Green:** `#008060` (Shopify Green) for active sidebar indicators, primary toggle fills, and primary CTA buttons.
+* **Secondary Cool Navy:** `#2C3E50` for secondary action items or text headings.
+* **Background Neutrals:** `#F6F6F7` for sidebar background, `#FFFFFF` for main layout cards.
+* **Typography:** `Inter` or `SF Pro Display` sans-serif, using `14px` regular for body text, `13px` semi-bold for sidebar links, and `16px` semi-bold for section header titles.
+* **Borders & Radii:** `border-radius: 8px` on input text boxes and custom containers; soft shadows (`box-shadow: 0px 1px 3px rgba(0, 0, 0, 0.05)`).
+
+### Container Layout & Dimension Constraints
+* **Left Sidebar Width:** Fixed at `260px` to match Polaris standards, with `border-right: 1px solid #E1E3E5`.
+* **Right Content Area Width:** Flexible container wrapping between `640px` and `960px`.
+* **Mockup Preview Card Width:** Fixed at `340px` floating next to the form container.
+* **Responsive Breakpoints:** Above `1200px`, content and mockup display side-by-side. Below `1200px`, mockup stacks below the settings forms.
+
 ---
 
-## 7. Design Recommendations & Actionable Improvements
+## 8. Design Recommendations & Actionable Improvements
 
 | Recommended Action | Impact | Effort | Priority |
 | :--- | :--- | :--- | :--- |
@@ -166,14 +212,13 @@ Zepto Settings Root
 
 ---
 
-## 8. Conclusion
+## 9. Conclusion
 
 The **Zepto Product Personalizer Settings** page provides robust, granular customization capabilities but suffers from styling inconsistency and usability issues. Transitioning the layout to native Shopify Polaris design guidelines and embedding syntax-validating input helpers will improve administrator efficiency, reduce storefront configuration errors, and offer a premium configuration experience.
 
 ---
 
-## 9. Resolved Design Decisions
-
-1. **Code Editor Library:** Embed the **Monaco Editor** library for custom CSS input fields to deliver a full-featured developer experience (auto-completion, syntax validation).
-2. **Mock Product Switching:** Implement mock product layout switching in the Live Storefront Preview to let merchants test customizations on various product formats (e.g., mugs, t-shirts, bracelets).
-3. **Viewport Targets:** Target the settings workspace configuration panel strictly for **desktop viewports**. There is no mobile optimization requirement for the settings admin interface.
+## 10. Open Questions / Clarifications (Optional)
+* **Out-of-Scope Sub-features & Connected Flows:**
+  * **Theme Blocks & App Embeds:** The "Installation" category contains steps that link directly to Shopify's Theme Editor. Checking if the App Embed toggle is active requires cross-context permission outside the app iframe itself.
+  * **Custom JS Scripting:** In addition to Custom CSS, the settings page features a "Custom JS" tab allowing raw javascript injections. A full validation pipeline for safe runtime execution of scripts remains out of scope for this visual audit.
