@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLoaderData } from "react-router";
 import type { LoaderFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";

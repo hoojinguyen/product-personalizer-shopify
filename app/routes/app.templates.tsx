@@ -70,7 +70,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let productLinks: string[] = [];
     try {
       productLinks = JSON.parse(productLinksJson);
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const result = await PersonalizationConfigSync.syncTemplate(
@@ -116,7 +116,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     let productLinks: string[] = [];
     try {
       productLinks = JSON.parse(productLinksJson);
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const result = await PersonalizationConfigSync.syncTemplate(
@@ -292,7 +292,7 @@ export default function TemplatesPanel() {
   // Navigation and Layout modes
   const [activeTab, setActiveTab] = useState<"built_in" | "yours">("built_in");
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   // Customizer Overlay Modal status
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
@@ -313,13 +313,13 @@ export default function TemplatesPanel() {
   const [buttonColor, setButtonColor] = useState("#008060");
   const [buttonTextColor, setButtonTextColor] = useState("#ffffff");
   const [options, setOptions] = useState<CustomizationOption[]>([]);
-  
+
   // Customizer Canvas Spec Accordion Settings
   const [viewName, setViewName] = useState("Main View");
   const [viewBackground, setViewBackground] = useState("Blank Canvas");
   const [canvasW, setCanvasW] = useState(1000);
   const [canvasH, setCanvasH] = useState(1000);
-  
+
   // Cart & Order Settings Accordion
   const [generatePreview, setGeneratePreview] = useState(true);
   const [previewSize, setPreviewSize] = useState("Compressed");
@@ -374,9 +374,9 @@ export default function TemplatesPanel() {
       hideBackground, customCartLabel, options, linkedProducts
     });
   }, [templateName, templateDescription, heading, layoutMode, brandColor,
-      buttonColor, buttonTextColor, viewName, viewBackground, canvasW, canvasH,
-      generatePreview, previewSize, additionalFile, hideBackground,
-      customCartLabel, options, linkedProducts]);
+    buttonColor, buttonTextColor, viewName, viewBackground, canvasW, canvasH,
+    generatePreview, previewSize, additionalFile, hideBackground,
+    customCartLabel, options, linkedProducts]);
 
   const isDirty = isModalOpen && initialStateRef.current !== "" && getCurrentStateSnapshot() !== initialStateRef.current;
 
@@ -463,7 +463,7 @@ export default function TemplatesPanel() {
           newStyle.appendChild(document.createTextNode(`@font-face { font-family: "${fontName}"; src: url("${fontUrl}") format("${format}"); }`));
           document.head.appendChild(newStyle);
         }
-      } catch (e) {}
+      } catch (e) { }
     });
   }, [fontAssets]);
 
@@ -479,12 +479,12 @@ export default function TemplatesPanel() {
         setBrandColor(config.brandColor || "#008060");
         setButtonColor(config.buttonColor || "#008060");
         setButtonTextColor(config.buttonTextColor || "#ffffff");
-        
+
         const loadedOptions = config.options || [];
         setOptions(loadedOptions);
         setOptionHistory([JSON.parse(JSON.stringify(loadedOptions))]);
         setHistoryIndex(0);
-        
+
         setViewName(config.viewName || "Main View");
         setViewBackground(config.viewBackground || "Blank Canvas");
         setCanvasW(config.canvasW || 1000);
@@ -511,7 +511,7 @@ export default function TemplatesPanel() {
             try {
               const pf = JSON.parse(p.metafield.value);
               if (pf.templateId === selectedTemplate.id) linked.push(p.id);
-            } catch (e) {}
+            } catch (e) { }
           }
         });
         setLinkedProducts(linked);
@@ -530,12 +530,12 @@ export default function TemplatesPanel() {
       setBrandColor("#008060");
       setButtonColor("#008060");
       setButtonTextColor("#ffffff");
-      
+
       setViewName("Main View");
       setViewBackground("Blank Canvas");
       setCanvasW(1000);
       setCanvasH(1000);
-      
+
       setGeneratePreview(true);
       setPreviewSize("Compressed");
       setAdditionalFile(true);
@@ -646,7 +646,7 @@ export default function TemplatesPanel() {
 
       options.forEach(opt => {
         cx.save();
-        
+
         const x = opt.canvasX ?? 500;
         const y = opt.canvasY ?? 500;
         cx.translate(x, y);
@@ -664,7 +664,7 @@ export default function TemplatesPanel() {
           cx.textBaseline = "middle";
           const fontSize = opt.canvasFontSize ?? 80;
           cx.font = `bold ${fontSize}px "${opt.id === "opt-default-text" ? previewFont : "Arial"}", Arial, sans-serif`;
-          
+
           const textVal = opt.id === "opt-default-text" ? (previewText || opt.label || "Custom Text") : (opt.label || "Custom Text");
           cx.fillText(textVal, 0, 0);
 
@@ -676,9 +676,9 @@ export default function TemplatesPanel() {
           cx.lineWidth = 3;
           renderW = opt.canvasWidth ?? 250;
           renderH = opt.canvasHeight ?? 250;
-          cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
-          cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
-          
+          cx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
+          cx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
+
           cx.fillStyle = "#1a1a1a";
           cx.font = "bold 20px Arial";
           cx.textAlign = "center";
@@ -690,9 +690,9 @@ export default function TemplatesPanel() {
           cx.lineWidth = 3;
           renderW = opt.canvasWidth ?? 250;
           renderH = opt.canvasHeight ?? 250;
-          cx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
-          cx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
-          
+          cx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
+          cx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
+
           cx.fillStyle = "#1a1a1a";
           cx.font = "bold 20px Arial";
           cx.textAlign = "center";
@@ -705,7 +705,7 @@ export default function TemplatesPanel() {
           cx.strokeStyle = "#1a1a1a";
           cx.lineWidth = 3;
           cx.setLineDash([8, 8]);
-          cx.strokeRect(-renderW/2 - 10, -renderH/2 - 10, renderW + 20, renderH + 20);
+          cx.strokeRect(-renderW / 2 - 10, -renderH / 2 - 10, renderW + 20, renderH + 20);
           cx.setLineDash([]);
 
           // Draw Drag & Resize placement tooltip badge
@@ -735,14 +735,14 @@ export default function TemplatesPanel() {
           cx.lineWidth = 2.5;
           const handleSize = 14;
           const corners = [
-            { x: -renderW/2 - 10, y: -renderH/2 - 10 },
-            { x: renderW/2 + 10, y: -renderH/2 - 10 },
-            { x: -renderW/2 - 10, y: renderH/2 + 10 },
-            { x: renderW/2 + 10, y: renderH/2 + 10 }
+            { x: -renderW / 2 - 10, y: -renderH / 2 - 10 },
+            { x: renderW / 2 + 10, y: -renderH / 2 - 10 },
+            { x: -renderW / 2 - 10, y: renderH / 2 + 10 },
+            { x: renderW / 2 + 10, y: renderH / 2 + 10 }
           ];
           corners.forEach(corner => {
-            cx.fillRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
-            cx.strokeRect(corner.x - handleSize/2, corner.y - handleSize/2, handleSize, handleSize);
+            cx.fillRect(corner.x - handleSize / 2, corner.y - handleSize / 2, handleSize, handleSize);
+            cx.strokeRect(corner.x - handleSize / 2, corner.y - handleSize / 2, handleSize, handleSize);
           });
         }
 
@@ -846,14 +846,14 @@ export default function TemplatesPanel() {
         const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
         const w = opt.type === "text" ? ((opt.canvasFontSize ?? 80) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
         const h = opt.type === "text" ? (opt.canvasFontSize ?? 80) : (opt.canvasHeight ?? 250);
-        
+
         const cxVal = opt.canvasX ?? 500;
         const cyVal = opt.canvasY ?? 500;
 
-        const left = cxVal - w/2;
-        const right = cxVal + w/2;
-        const top = cyVal - h/2;
-        const bottom = cyVal + h/2;
+        const left = cxVal - w / 2;
+        const right = cxVal + w / 2;
+        const top = cyVal - h / 2;
+        const bottom = cyVal + h / 2;
 
         const threshold = 40;
 
@@ -886,15 +886,15 @@ export default function TemplatesPanel() {
       const textVal = opt.id === "opt-default-text" ? previewText : opt.label;
       const w = opt.type === "text" ? ((opt.canvasFontSize ?? 80) * textVal.length * 0.5) : (opt.canvasWidth ?? 250);
       const h = opt.type === "text" ? (opt.canvasFontSize ?? 80) : (opt.canvasHeight ?? 250);
-      
+
       const cxVal = opt.canvasX ?? 500;
       const cyVal = opt.canvasY ?? 500;
 
       if (
-        x >= cxVal - w/2 &&
-        x <= cxVal + w/2 &&
-        y >= cyVal - h/2 &&
-        y <= cyVal + h/2
+        x >= cxVal - w / 2 &&
+        x <= cxVal + w / 2 &&
+        y >= cyVal - h / 2 &&
+        y <= cyVal + h / 2
       ) {
         setSelectedOptionId(opt.id);
         setDragState({
@@ -942,10 +942,10 @@ export default function TemplatesPanel() {
       } else {
         const wFactor = handle.endsWith("e") ? 1 : -1;
         const hFactor = handle.startsWith("s") ? 1 : -1;
-        
+
         const newWidth = Math.max(40, dragState.startWidth + Math.round(dx * wFactor));
         const newHeight = Math.max(40, dragState.startHeight + Math.round(dy * hFactor));
-        
+
         handleUpdateOption(opt.id, {
           canvasWidth: newWidth,
           canvasHeight: newHeight
@@ -1087,7 +1087,7 @@ export default function TemplatesPanel() {
 
     setTemplateName(defaultName);
     setTemplateDescription(defaultDesc);
-    
+
     let activePreset: CustomizationOption[] = [];
 
     if (selectedStyleCard === "watch") {
@@ -1302,7 +1302,7 @@ export default function TemplatesPanel() {
 
   const handleOpenLinkModal = (templateId: string) => {
     setLinkingTemplateId(templateId);
-    
+
     // Find already linked products
     const linked: string[] = [];
     products.forEach((p: any) => {
@@ -1310,10 +1310,10 @@ export default function TemplatesPanel() {
         try {
           const pf = JSON.parse(p.metafield.value);
           if (pf.templateId === templateId) linked.push(p.id);
-        } catch (e) {}
+        } catch (e) { }
       }
     });
-    
+
     setLinkedProducts(linked);
     setInitialLinkedProducts(linked);
     setIsLinkModalOpen(true);
@@ -1382,7 +1382,7 @@ export default function TemplatesPanel() {
 
   return (
     <s-page heading="Templates">
-      
+
       {/* Visual styling override */}
       <style>{`
         /* Premium custom design elements */
@@ -2126,7 +2126,7 @@ export default function TemplatesPanel() {
 
       {/* 🔴 TEMPLATES LIST VIEW */}
       <div className="templates-tab-container">
-        
+
         {/* App Title inside card with tab buttons */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 20px 0 20px" }}>
           <h1 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#1a1a1a" }}>Templates</h1>
@@ -2140,7 +2140,7 @@ export default function TemplatesPanel() {
             }}
             className="customizer-btn primary"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             Create new Template
           </button>
         </div>
@@ -2164,7 +2164,7 @@ export default function TemplatesPanel() {
         {/* Search bar below tabs */}
         <div className="search-and-filters">
           <div className="search-field-wrapper">
-            <svg className="search-field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <svg className="search-field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
             <input
               type="text"
               className="search-field-input"
@@ -2225,12 +2225,12 @@ export default function TemplatesPanel() {
                 ✕
               </button>
             </div>
-            
+
             <div className="generic-modal-body" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
               <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Select Style Category / Thumbnail</label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-                  
+
                   <div
                     onClick={() => setSelectedStyleCard("watch")}
                     style={{
@@ -2428,7 +2428,7 @@ export default function TemplatesPanel() {
               <p style={{ alignSelf: "flex-start", margin: 0, fontSize: "13px", color: "#6d7175" }}>
                 {selectedTemplate.description}
               </p>
-              
+
               {/* Canvas Preview in Modal */}
               <canvas
                 ref={(node) => {
@@ -2437,20 +2437,20 @@ export default function TemplatesPanel() {
                     if (ctx) {
                       node.width = 600;
                       node.height = 600;
-                      ctx.clearRect(0,0,600,600);
+                      ctx.clearRect(0, 0, 600, 600);
                       ctx.fillStyle = "#ffffff";
-                      ctx.fillRect(0,0,600,600);
-                      
+                      ctx.fillRect(0, 0, 600, 600);
+
                       try {
                         const config = JSON.parse(selectedTemplate.options);
                         const opts = config.options || [];
-                        
+
                         opts.forEach((opt: any) => {
                           ctx.save();
                           const x = opt.canvasX ?? 300;
                           const y = opt.canvasY ?? 300;
                           ctx.translate(x * 0.6, y * 0.6); // Scale to 360 size
-                          
+
                           if (opt.type === "text") {
                             ctx.fillStyle = "#1a1a1a";
                             ctx.textAlign = "center";
@@ -2463,9 +2463,9 @@ export default function TemplatesPanel() {
                             ctx.fillStyle = "rgba(26,26,26,0.05)";
                             ctx.strokeStyle = "#1a1a1a";
                             ctx.lineWidth = 2;
-                            ctx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
-                            ctx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
-                            
+                            ctx.fillRect(-renderW / 2, -renderH / 2, renderW, renderH);
+                            ctx.strokeRect(-renderW / 2, -renderH / 2, renderW, renderH);
+
                             ctx.fillStyle = "#1a1a1a";
                             ctx.font = "12px Arial";
                             ctx.textAlign = "center";
@@ -2473,7 +2473,7 @@ export default function TemplatesPanel() {
                           }
                           ctx.restore();
                         });
-                      } catch(e) {}
+                      } catch (e) { }
                     }
                   }
                 }}

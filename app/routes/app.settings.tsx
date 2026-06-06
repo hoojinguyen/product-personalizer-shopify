@@ -7,6 +7,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { SettingsSidebar } from "../components/settings/SettingsSidebar";
 import { SettingsForm } from "../components/settings/SettingsForm";
 import { StorefrontPreview } from "../components/settings/StorefrontPreview";
+import { useLayoutContext } from "../components/layout";
 
 // Loader: Fetch or seed the global AppSettings for this shop
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -87,6 +88,7 @@ export default function AppSettingsPanel() {
   const { settings } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
+  const { updateSaveBar } = useLayoutContext();
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -199,6 +201,32 @@ export default function AppSettingsPanel() {
     setCustomJs(settings.customJs || "");
     shopify.toast.show("Changes discarded.");
   };
+
+  // Compute whether form is dirty vs persisted settings
+  const isDirty =
+    layoutMode !== settings.layoutMode ||
+    brandColor !== settings.brandColor ||
+    buttonColor !== settings.buttonColor ||
+    buttonTextColor !== settings.buttonTextColor ||
+    popupType !== settings.popupType ||
+    showQuantity !== settings.showQuantity ||
+    cartRedirect !== settings.cartRedirect ||
+    exportFormat !== settings.exportFormat ||
+    dpiResolution !== settings.dpiResolution ||
+    customCss !== (settings.customCss || "") ||
+    customJs !== (settings.customJs || "");
+
+  const isSaving = fetcher.state === "submitting";
+
+
+  // Update save bar whenever dirty state changes
+  useEffect(() => {
+    updateSaveBar(
+      isDirty
+        ? { isDirty: true, onSave: handleSave, onDiscard: handleDiscard, isSaving }
+        : undefined
+    );
+  }, [isDirty, isSaving]);
 
   // Helper to trigger save bar's change detector for Monaco Editors
   const dispatchFormChange = () => {
