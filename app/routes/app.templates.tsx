@@ -1735,6 +1735,7 @@ export default function TemplatesPanel() {
           outline: none;
           transition: border-color 0.15s, box-shadow 0.15s;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          box-sizing: border-box;
         }
 
         select.custom-input {
@@ -1961,9 +1962,10 @@ export default function TemplatesPanel() {
         }
 
         .option-card-wrapper.selected {
-          border-color: #1a1a1a;
-          box-shadow: 0 0 0 1px #1a1a1a, 0 2px 6px rgba(0, 0, 0, 0.08);
-          background: #fafafa;
+          border: 2px solid #1a1a1a;
+          padding: 11px; /* Offset the 2px border width to prevent layout shifting */
+          background: #ffffff;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
         }
 
         .option-card-wrapper.drag-over {
@@ -3131,51 +3133,51 @@ export default function TemplatesPanel() {
 
                                 {/* Coordinate layouts settings */}
                                 {(opt.type === "text" || opt.type === "clipart" || opt.type === "file") && (
-                                  <div style={{ marginTop: "8px", borderTop: "1px dashed #e1e3e6", paddingTop: "8px" }}>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                        <span style={{ fontSize: "10px", color: "#6d7175" }}>X:</span>
+                                  <div style={{ marginTop: "10px", borderTop: "1px dashed #cbd5e1", paddingTop: "10px" }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                                      <div className="input-group">
+                                        <label style={{ fontSize: "9px" }}>X Position</label>
                                         <input
                                           type="number"
                                           className="custom-input"
-                                          style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                          style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
                                           value={opt.canvasX ?? 500}
                                           onChange={(e) => handleUpdateOption(opt.id, { canvasX: parseInt(e.target.value) || 0 })}
                                           onBlur={() => pushHistory(options)}
                                         />
                                       </div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                        <span style={{ fontSize: "10px", color: "#6d7175" }}>Y:</span>
+                                      <div className="input-group">
+                                        <label style={{ fontSize: "9px" }}>Y Position</label>
                                         <input
                                           type="number"
                                           className="custom-input"
-                                          style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                          style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
                                           value={opt.canvasY ?? 500}
                                           onChange={(e) => handleUpdateOption(opt.id, { canvasY: parseInt(e.target.value) || 0 })}
                                           onBlur={() => pushHistory(options)}
                                         />
                                       </div>
                                     </div>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "4px" }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "8px" }}>
                                       {opt.type === "text" ? (
                                         <>
-                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>Size:</span>
+                                          <div className="input-group">
+                                            <label style={{ fontSize: "9px" }}>Font Size</label>
                                             <input
                                               type="number"
                                               className="custom-input"
-                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
                                               value={opt.canvasFontSize ?? 80}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasFontSize: parseInt(e.target.value) || 0 })}
                                               onBlur={() => pushHistory(options)}
                                             />
                                           </div>
-                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>Rot:</span>
+                                          <div className="input-group">
+                                            <label style={{ fontSize: "9px" }}>Rotation (°)</label>
                                             <input
                                               type="number"
                                               className="custom-input"
-                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
                                               value={opt.canvasRotation ?? 0}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasRotation: parseInt(e.target.value) || 0 })}
                                               onBlur={() => pushHistory(options)}
@@ -3184,23 +3186,23 @@ export default function TemplatesPanel() {
                                         </>
                                       ) : (
                                         <>
-                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>W:</span>
+                                          <div className="input-group">
+                                            <label style={{ fontSize: "9px" }}>Width (px)</label>
                                             <input
                                               type="number"
                                               className="custom-input"
-                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
                                               value={opt.canvasWidth ?? 300}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasWidth: parseInt(e.target.value) || 0 })}
                                               onBlur={() => pushHistory(options)}
                                             />
                                           </div>
-                                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                            <span style={{ fontSize: "10px", color: "#6d7175" }}>H:</span>
+                                          <div className="input-group">
+                                            <label style={{ fontSize: "9px" }}>Height (px)</label>
                                             <input
                                               type="number"
                                               className="custom-input"
-                                              style={{ padding: "2px 4px", fontSize: "10px", width: "100%" }}
+                                              style={{ padding: "4px 8px", fontSize: "11px", width: "100%" }}
                                               value={opt.canvasHeight ?? 300}
                                               onChange={(e) => handleUpdateOption(opt.id, { canvasHeight: parseInt(e.target.value) || 0 })}
                                               onBlur={() => pushHistory(options)}
