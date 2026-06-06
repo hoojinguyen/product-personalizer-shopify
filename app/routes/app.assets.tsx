@@ -386,7 +386,7 @@ export default function AssetsDirectory() {
         </s-paragraph>
 
         {/* Tab Headers */}
-        <div style={{ display: "flex", borderBottom: "1px solid #e1e3e5", margin: "16px 0", gap: "20px" }}>
+        <div className="tab-bar">
           {(["fonts", "colors", "options", "images"] as const).map(tab => (
             <button
               key={tab}
@@ -394,17 +394,7 @@ export default function AssetsDirectory() {
                 setActiveTab(tab);
                 setShowAddModal(false);
               }}
-              style={{
-                background: "none",
-                border: "none",
-                padding: "12px 6px",
-                fontSize: "14px",
-                fontWeight: 600,
-                color: activeTab === tab ? "#008060" : "#6d7175",
-                borderBottom: activeTab === tab ? "3px solid #008060" : "3px solid transparent",
-                cursor: "pointer",
-                transition: "all 0.2s ease"
-              }}
+              className={`tab-item ${activeTab === tab ? "active" : ""}`}
             >
               {tab === "fonts" ? "🔤 Font Sets" : tab === "colors" ? "🎨 Color Palettes" : tab === "images" ? "🖼️ Clipart Graphics" : "📋 Choice Options"}
             </button>
@@ -412,19 +402,10 @@ export default function AssetsDirectory() {
         </div>
 
         {/* Action Button */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+        <div className="flex justify-end" style={{ marginBottom: "16px" }}>
           <button
             onClick={openAdd}
-            style={{
-              padding: "8px 16px",
-              background: "#008060",
-              color: "#fff",
-              border: "none",
-              borderRadius: "6px",
-              fontWeight: 600,
-              cursor: "pointer",
-              fontSize: "14px"
-            }}
+            className="btn-primary"
           >
             ➕ Add {activeTab === "fonts" ? "Font" : activeTab === "colors" ? "Color Set" : activeTab === "images" ? "Clipart Set" : "Option List"}
           </button>
@@ -432,47 +413,48 @@ export default function AssetsDirectory() {
 
         {/* Modal Interface */}
         {showAddModal && (
-          <div style={{ border: "1px solid #e1e3e5", padding: "20px", borderRadius: "10px", background: "#f9fafb", marginBottom: "20px" }}>
-            <h3 style={{ fontSize: "16px", fontWeight: 700, marginBottom: "16px" }}>
+          <div className="inline-card">
+            <h3 className="inline-card-title">
               {editingAsset ? "🔧 Edit" : "➕ Create"} {activeTab === "fonts" ? "Font Set" : activeTab === "colors" ? "Color Set" : activeTab === "images" ? "Clipart Set" : "Option List"}
             </h3>
 
             {activeTab === "images" ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div className="flex flex-col gap-3">
                 <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Clipart Set Name</label>
+                  <label className="form-label">Clipart Set Name</label>
                   <input
                     type="text"
                     value={assetName}
                     onChange={(e) => setAssetName(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+                    className="form-input"
                     placeholder="e.g. Monogram Borders, Sports Decals"
                     required
                   />
                 </div>
 
                 {/* Upload sub-form */}
-                <div style={{ background: "#fff", border: "1px solid #e1e3e5", padding: "12px", borderRadius: "8px", marginTop: "8px" }}>
-                  <span style={{ fontWeight: 700, fontSize: "12px", display: "block", marginBottom: "8px", color: "#2c3e50" }}>🖼️ Upload New Clipart Graphic</span>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "2px" }}>Graphic Name/Label</label>
+                <div className="sub-card">
+                  <span className="sub-card-title">🖼️ Upload New Clipart Graphic</span>
+                  <div className="flex gap-3 align-end">
+                    <div className="flex-1">
+                      <label className="form-label-sm">Graphic Name/Label</label>
                       <input
                         type="text"
                         value={newClipartName}
                         onChange={(e) => setNewClipartName(e.target.value)}
                         placeholder="e.g. Golden Frame, Anchor"
-                        style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3" }}
+                        className="form-input-sm"
                       />
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: "block", fontSize: "11px", fontWeight: 600, marginBottom: "2px" }}>Image File</label>
+                    <div className="flex-1">
+                      <label className="form-label-sm">Image File</label>
                       <input
                         id="clipart-file-picker"
                         type="file"
                         accept="image/*"
                         onChange={(e) => setNewClipartFile(e.target.files?.[0] || null)}
-                        style={{ width: "100%", fontSize: "12px" }}
+                        className="form-input-sm"
+                        style={{ background: "transparent", border: "none", padding: "0" }}
                       />
                     </div>
                     <button
@@ -483,16 +465,7 @@ export default function AssetsDirectory() {
                           handleSingleClipartUpload(newClipartFile, newClipartName);
                         }
                       }}
-                      style={{
-                        padding: "6px 12px",
-                        background: "#2c3e50",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: "4px",
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        fontWeight: 600
-                      }}
+                      className="btn-sm-dark"
                     >
                       {loading ? "Uploading..." : "Upload Clipart"}
                     </button>
@@ -502,33 +475,16 @@ export default function AssetsDirectory() {
                 {/* Grid of uploaded clipart images */}
                 {clipartImages.length > 0 && (
                   <div style={{ marginTop: "12px" }}>
-                    <label style={{ display: "block", fontWeight: 600, fontSize: "12px", marginBottom: "6px" }}>Uploaded Graphics ({clipartImages.length})</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: "8px", maxHeight: "180px", overflowY: "auto", padding: "6px", border: "1px solid #e1e3e5", borderRadius: "6px", background: "#fff" }}>
+                    <label className="form-label-sm" style={{ fontSize: "12px", marginBottom: "6px" }}>Uploaded Graphics ({clipartImages.length})</label>
+                    <div className="graphics-grid">
                       {clipartImages.map((img) => (
-                        <div key={img.id} style={{ position: "relative", border: "1px solid #e1e3e5", borderRadius: "4px", padding: "4px", textAlign: "center", background: "#fafafa" }}>
-                          <img src={img.url} alt={img.name} style={{ height: "45px", width: "100%", objectFit: "contain" }} />
-                          <div style={{ fontSize: "10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", padding: "0 2px", color: "#2c3e50" }}>{img.name}</div>
+                        <div key={img.id} className="graphic-item-card">
+                          <img src={img.url} alt={img.name} className="graphic-item-img" />
+                          <div className="graphic-item-label">{img.name}</div>
                           <button
                             type="button"
                             onClick={() => handleRemoveClipart(img.id)}
-                            style={{
-                              position: "absolute",
-                              top: "2px",
-                              right: "2px",
-                              background: "rgba(217,56,56,0.9)",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "50%",
-                              width: "14px",
-                              height: "14px",
-                              fontSize: "10px",
-                              lineHeight: "12px",
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              padding: 0
-                            }}
+                            className="graphic-item-delete"
                           >
                             ×
                           </button>
@@ -538,17 +494,17 @@ export default function AssetsDirectory() {
                   </div>
                 )}
 
-                <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <div className="flex gap-2" style={{ marginTop: "10px" }}>
                   <button
                     onClick={handleSave}
                     disabled={loading || !assetName.trim()}
-                    style={{ padding: "8px 16px", background: "#008060", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-primary"
                   >
                     Save Clipart Set
                   </button>
                   <button
                     onClick={() => setShowAddModal(false)}
-                    style={{ padding: "8px 16px", background: "#e1e3e5", color: "#2c3e50", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-secondary"
                   >
                     Cancel
                   </button>
@@ -556,40 +512,40 @@ export default function AssetsDirectory() {
               </div>
             ) : activeTab === "fonts" && !editingAsset ? (
               // Font File Upload Form
-              <form onSubmit={handleFontUpload} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <form onSubmit={handleFontUpload} className="flex flex-col gap-3">
                 <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Typography Name</label>
+                  <label className="form-label">Typography Name</label>
                   <input
                     type="text"
                     value={assetName}
                     onChange={(e) => setAssetName(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+                    className="form-input"
                     placeholder="e.g. Cursive Elegant, Retro Bold"
                     required
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Font File (.ttf, .otf, or .woff)</label>
+                  <label className="form-label">Font File (.ttf, .otf, or .woff)</label>
                   <input
                     type="file"
                     accept=".ttf,.otf,.woff"
                     onChange={(e) => setFontFile(e.target.files?.[0] || null)}
                     required
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", background: "#fff" }}
+                    className="form-input"
                   />
                 </div>
-                <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <div className="flex gap-2" style={{ marginTop: "10px" }}>
                   <button
                     type="submit"
                     disabled={loading}
-                    style={{ padding: "8px 16px", background: "#008060", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-primary"
                   >
                     {loading ? "Uploading to Shopify CDN..." : "Upload Font & Save"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowAddModal(false)}
-                    style={{ padding: "8px 16px", background: "#e1e3e5", color: "#2c3e50", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-secondary"
                   >
                     Cancel
                   </button>
@@ -597,40 +553,40 @@ export default function AssetsDirectory() {
               </form>
             ) : (
               // Standard asset forms
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div className="flex flex-col gap-3">
                 <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>Asset Name</label>
+                  <label className="form-label">Asset Name</label>
                   <input
                     type="text"
                     value={assetName}
                     onChange={(e) => setAssetName(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+                    className="form-input"
                     placeholder={activeTab === "colors" ? "e.g. Vintage Leather, Pastels" : "e.g. US Sizes, Length Tiers"}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontWeight: 600, fontSize: "13px", marginBottom: "4px" }}>
+                  <label className="form-label">
                     {activeTab === "colors" ? "Colors List (comma-separated Hex values)" : "Options (comma-separated list)"}
                   </label>
                   <input
                     type="text"
                     value={assetValue}
                     onChange={(e) => setAssetValue(e.target.value)}
-                    style={{ width: "100%", padding: "8px", borderRadius: "6px", border: "1px solid #babfc3", background: "#fff" }}
+                    className="form-input"
                     placeholder={activeTab === "colors" ? "#000000, #E63946, #457B9D" : "Small, Medium, Large"}
                   />
                 </div>
-                <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <div className="flex gap-2" style={{ marginTop: "10px" }}>
                   <button
                     onClick={handleSave}
                     disabled={loading}
-                    style={{ padding: "8px 16px", background: "#008060", color: "#fff", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-primary"
                   >
                     {loading ? "Saving..." : "Save Asset"}
                   </button>
                   <button
                     onClick={() => setShowAddModal(false)}
-                    style={{ padding: "8px 16px", background: "#e1e3e5", color: "#2c3e50", border: "none", borderRadius: "6px", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-secondary"
                   >
                     Cancel
                   </button>
@@ -642,11 +598,11 @@ export default function AssetsDirectory() {
 
         {/* Directory Listing */}
         {filteredAssets.length === 0 ? (
-          <div style={{ padding: "40px", border: "1px dashed #babfc3", borderRadius: "8px", textAlign: "center", color: "#6d7175" }}>
+          <div className="empty-placeholder">
             No assets created yet in this category. Click "Add" to upload/define your first global asset set.
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+          <div className="assets-grid">
             {filteredAssets.map(asset => {
               let parsedValue: any = null;
               if (asset.type === "FONTS") {
@@ -656,25 +612,13 @@ export default function AssetsDirectory() {
               }
 
               return (
-                <div
-                  key={asset.id}
-                  style={{
-                    border: "1px solid #e1e3e5",
-                    borderRadius: "8px",
-                    padding: "16px",
-                    background: "#ffffff",
-                    boxShadow: "0 2px 4px rgba(0,0,0,0.01)",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between"
-                  }}
-                >
+                <div key={asset.id} className="asset-card">
                   <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                      <span style={{ fontWeight: 700, fontSize: "15px", color: "#2c3e50" }}>{asset.name}</span>
+                    <div className="flex justify-between align-center" style={{ marginBottom: "8px" }}>
+                      <span className="asset-card-title">{asset.name}</span>
                       <button
                         onClick={() => handleDelete(asset.id)}
-                        style={{ background: "none", border: "none", color: "#d93838", cursor: "pointer", fontSize: "12px", fontWeight: 600 }}
+                        className="btn-delete-link"
                       >
                         🗑️ Delete
                       </button>
@@ -682,41 +626,31 @@ export default function AssetsDirectory() {
 
                     {asset.type === "FONTS" && parsedValue && (
                       <div style={{ margin: "8px 0" }}>
-                        <div style={{ fontSize: "11px", color: "#6d7175", wordBreak: "break-all" }}>
+                        <div className="font-meta">
                           CDN Format: <code>{parsedValue.format}</code>
                         </div>
                         {/* Dynamic font stylesheet helper to let merchant preview the font inside the admin directly! */}
                         <style dangerouslySetInnerHTML={{
                           __html: `@font-face { font-family: "${asset.name}"; src: url("${parsedValue.url}") format("${parsedValue.format}"); }`
                         }} />
-                        <div style={{
-                          fontFamily: `"${asset.name}", sans-serif`,
-                          fontSize: "24px",
-                          marginTop: "8px",
-                          padding: "6px",
-                          border: "1px dashed #e1e3e5",
-                          borderRadius: "4px",
-                          textAlign: "center"
-                        }}>
+                        <div
+                          className="font-preview-box"
+                          style={{ fontFamily: `"${asset.name}", sans-serif` }}
+                        >
                           Elegant Calligraphy
                         </div>
                       </div>
                     )}
 
                     {asset.type === "COLORS" && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", margin: "8px 0" }}>
+                      <div className="color-swatch-list">
                         {asset.value.split(",").map((c: string, idx: number) => {
                           const hex = c.trim();
                           return (
                             <div
                               key={idx}
-                              style={{
-                                width: "24px",
-                                height: "24px",
-                                borderRadius: "50%",
-                                border: "1px solid #d2d5d8",
-                                background: hex
-                              }}
+                              className="color-swatch-item"
+                              style={{ background: hex }}
                               title={hex}
                             />
                           );
@@ -726,7 +660,7 @@ export default function AssetsDirectory() {
 
                     {asset.type === "OPTIONS" && (
                       <div style={{ margin: "8px 0" }}>
-                        <select style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #babfc3", background: "#f9fafb" }}>
+                        <select className="options-select">
                           {asset.value.split(",").map((opt: string, idx: number) => (
                             <option key={idx}>{opt.trim()}</option>
                           ))}
@@ -735,32 +669,23 @@ export default function AssetsDirectory() {
                     )}
 
                     {asset.type === "IMAGES" && (
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", margin: "8px 0" }}>
+                      <div className="clipart-preview-grid">
                         {(() => {
                           try {
                             const imgs = JSON.parse(asset.value);
-                            if (!Array.isArray(imgs) || imgs.length === 0) return <div style={{ fontSize: "11px", color: "#6d7175", fontStyle: "italic" }}>No graphics yet</div>;
+                            if (!Array.isArray(imgs) || imgs.length === 0) return <div className="font-meta" style={{ fontStyle: "italic" }}>No graphics yet</div>;
                             return imgs.slice(0, 8).map((img: any) => (
-                              <div
-                                key={img.id}
-                                style={{
-                                  border: "1px solid #e1e3e5",
-                                  borderRadius: "4px",
-                                  padding: "2px",
-                                  textAlign: "center",
-                                  background: "#fdfdfd"
-                                }}
-                              >
+                              <div key={img.id} className="clipart-preview-item">
                                 <img
                                   src={img.url}
                                   alt={img.name}
-                                  style={{ width: "100%", height: "35px", objectFit: "contain" }}
+                                  className="clipart-preview-img"
                                   title={img.name}
                                 />
                               </div>
                             ));
                           } catch (e) {
-                            return <div style={{ fontSize: "11px", color: "#d93838" }}>Error parsing clipart</div>;
+                            return <div className="font-meta" style={{ color: "#d93838" }}>Error parsing clipart</div>;
                           }
                         })()}
                       </div>
@@ -768,10 +693,10 @@ export default function AssetsDirectory() {
                   </div>
 
                   {asset.type !== "FONTS" && (
-                    <div style={{ marginTop: "12px", borderTop: "1px solid #f1f2f4", paddingTop: "8px", display: "flex", justifyContent: "flex-end" }}>
+                    <div className="asset-card-footer">
                       <button
                         onClick={() => openEdit(asset)}
-                        style={{ background: "none", border: "none", color: "#008060", fontWeight: 600, cursor: "pointer", fontSize: "13px" }}
+                        className="btn-edit-link"
                       >
                         ✏️ Edit {asset.type === "IMAGES" ? "Graphics" : "List"}
                       </button>

@@ -5,6 +5,7 @@ import db from "../db.server";
 import { PersonalizationConfigSync } from "../utils/templateSync";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAppBridge } from "@shopify/app-bridge-react";
+import { Modal } from "../components/shared/Modal";
 
 // The GraphQL query to fetch store products for link selection
 const PRODUCTS_QUERY = `#graphql
@@ -1402,747 +1403,6 @@ export default function TemplatesPanel() {
 
   return (
     <s-page heading="Templates">
-      
-      {/* Visual styling override */}
-      <style>{`
-        /* Premium custom design elements */
-        .templates-tab-container {
-          background: #ffffff;
-          border-radius: 12px;
-          border: 1px solid #ebebeb;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-          overflow: hidden;
-          margin-top: 20px;
-        }
-        
-        .templates-tab-bar {
-          display: flex;
-          background: #fafafa;
-          border-bottom: 1px solid #ebebeb;
-          padding: 0 16px;
-        }
-
-        .templates-tab-item {
-          padding: 14px 20px;
-          font-size: 14px;
-          font-weight: 600;
-          color: #6d7175;
-          cursor: pointer;
-          border-bottom: 3px solid transparent;
-          transition: all 0.2s ease;
-        }
-
-        .templates-tab-item:hover {
-          color: #1a1a1a;
-        }
-
-        .templates-tab-item.active {
-          color: #1a1a1a;
-          border-bottom-color: #1a1a1a;
-        }
-
-        .search-and-filters {
-          padding: 16px;
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          border-bottom: 1px solid #ebebeb;
-        }
-
-        .search-field-wrapper {
-          position: relative;
-          flex: 1;
-        }
-
-        .search-field-input {
-          width: 100%;
-          padding: 8px 12px 8px 36px;
-          border: 1px solid #cbd5e1;
-          border-radius: 6px;
-          font-size: 14px;
-          outline: none;
-          background: #ffffff;
-          color: #1a1a1a;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-          transition: border-color 0.15s, box-shadow 0.15s;
-        }
-
-        .search-field-input:focus {
-          border-color: #1a1a1a;
-          box-shadow: 0 0 0 1px #1a1a1a, 0 0 0 3px rgba(26, 26, 26, 0.15);
-        }
-
-        .search-field-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: #8c9196;
-        }
-
-        .template-table {
-          width: 100%;
-          border-collapse: collapse;
-          text-align: left;
-        }
-
-        .template-table th {
-          background: #fafafa;
-          padding: 14px 16px;
-          font-size: 12px;
-          font-weight: 600;
-          text-transform: uppercase;
-          color: #6d7175;
-          border-bottom: 1px solid #ebebeb;
-        }
-
-        .template-table td {
-          padding: 16px;
-          font-size: 14px;
-          border-bottom: 1px solid #f3f3f3;
-          vertical-align: middle;
-        }
-
-        .template-table tr:hover td {
-          background-color: #fcfcfc;
-        }
-
-        .badge-tag {
-          display: inline-block;
-          padding: 3px 10px;
-          font-size: 11px;
-          font-weight: 600;
-          border-radius: 12px;
-          margin-right: 6px;
-          background-color: #f1f2f4;
-          color: #2c3e50;
-          border: 1px solid #e1e3e6;
-        }
-
-        .action-icon-btn {
-          background: none;
-          border: none;
-          padding: 6px;
-          color: #6d7175;
-          cursor: pointer;
-          border-radius: 4px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-        }
-
-        .action-icon-btn:hover {
-          color: #1a1a1a;
-          background: #f1f2f4;
-        }
-
-        .action-icon-btn.danger:hover {
-          color: #d92d20;
-          background: #fde8e8;
-        }
-
-        .btn-text-action {
-          background: none;
-          border: none;
-          color: #1a1a1a;
-          font-weight: 600;
-          cursor: pointer;
-          font-size: 13px;
-          padding: 6px 10px;
-          border-radius: 4px;
-          transition: all 0.2s;
-        }
-
-        .btn-text-action:hover {
-          background: rgba(0, 0, 0, 0.05);
-        }
-
-        /* Overlay blocker modal styles */
-        .customizer-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0, 0, 0, 0.4);
-          backdrop-filter: blur(8px);
-          z-index: 10000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          animation: fadeInOverlay 0.2s ease-out;
-        }
-
-        @keyframes fadeInOverlay {
-          from { opacity: 0; } to { opacity: 1; }
-        }
-
-        .customizer-card {
-          width: 90vw;
-          height: 90vh;
-          background: #ffffff;
-          border-radius: 14px;
-          box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-          display: flex;
-          flex-direction: column;
-          overflow: hidden;
-          animation: slideUpCard 0.25s cubic-bezier(0.1, 0.8, 0.3, 1);
-        }
-
-        @keyframes slideUpCard {
-          from { transform: translateY(40px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-
-        .customizer-header {
-          padding: 16px 24px;
-          border-bottom: 1px solid #ebebeb;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: #fafafa;
-          box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-        }
-
-        .customizer-header h2 {
-          margin: 0;
-          font-size: 16px;
-          font-weight: 700;
-          color: #1a1a1a;
-        }
-
-        .customizer-pane {
-          flex: 1;
-          display: flex;
-          overflow: hidden;
-        }
-
-        .customizer-sidebar {
-          width: 360px;
-          border-right: 1px solid #ebebeb;
-          display: flex;
-          flex-direction: column;
-          background: #ffffff;
-        }
-
-        .customizer-main {
-          flex: 1;
-          background: #f4f5f6;
-          background-image: radial-gradient(#e3e4e6 1px, transparent 1px);
-          background-size: 20px 20px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          padding: 24px;
-          position: relative;
-          overflow-y: auto;
-        }
-
-        .customizer-subtabs {
-          display: flex;
-          background: #ffffff;
-          border-bottom: 1px solid #ebebeb;
-          padding: 0 16px;
-          gap: 16px;
-        }
-
-        .customizer-subtab {
-          padding: 12px 4px;
-          font-size: 13px;
-          font-weight: 600;
-          color: #6d7175;
-          cursor: pointer;
-          border-bottom: 2px solid transparent;
-          transition: all 0.15s ease;
-          position: relative;
-        }
-
-        .customizer-subtab:hover {
-          color: #1a1a1a;
-        }
-
-        .customizer-subtab.active {
-          color: #1a1a1a;
-          border-bottom: 2px solid #1a1a1a;
-        }
-
-        /* Custom Accordion Styling */
-        .sidebar-accordion {
-          border-bottom: 1px solid #ebebeb;
-        }
-
-        .sidebar-accordion summary {
-          padding: 14px 16px;
-          font-size: 13px;
-          font-weight: 700;
-          color: #1a1a1a;
-          cursor: pointer;
-          list-style: none;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          user-select: none;
-          background: #ffffff;
-        }
-
-        .sidebar-accordion summary::-webkit-details-marker {
-          display: none;
-        }
-
-        .sidebar-accordion summary::after {
-          content: "";
-          display: inline-block;
-          width: 6px;
-          height: 6px;
-          border-right: 2px solid #8c9196;
-          border-bottom: 2px solid #8c9196;
-          transform: rotate(45deg);
-          transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-          margin-right: 4px;
-        }
-
-        .sidebar-accordion[open] summary::after {
-          transform: rotate(-135deg);
-        }
-
-        .accordion-content {
-          padding: 0 16px 16px 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          background: #ffffff;
-        }
-
-        .input-group {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .input-group label {
-          font-size: 11px;
-          font-weight: 600;
-          color: #6d7175;
-          text-transform: uppercase;
-        }
-
-        .custom-input {
-          padding: 8px 12px;
-          border: 1px solid #cbd5e1;
-          border-radius: 6px;
-          font-size: 13px;
-          background: #ffffff;
-          color: #1a1a1a;
-          outline: none;
-          transition: border-color 0.15s, box-shadow 0.15s;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-          box-sizing: border-box;
-        }
-
-        select.custom-input {
-          appearance: none;
-          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c5f62' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-          background-repeat: no-repeat;
-          background-position: right 12px center;
-          background-size: 12px;
-          padding-right: 36px;
-        }
-
-        .custom-input:focus {
-          border-color: #1a1a1a;
-          box-shadow: 0 0 0 1px #1a1a1a, 0 0 0 3px rgba(26, 26, 26, 0.15);
-        }
-
-        .custom-input::placeholder {
-          color: #8c9196;
-        }
-
-        .toggle-switch-wrapper {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 4px 0;
-        }
-
-        .toggle-switch-label {
-          font-size: 12px;
-          font-weight: 500;
-          color: #1a1a1a;
-        }
-
-        /* Toggle checkbox slider */
-        .toggle-switch {
-          position: relative;
-          display: inline-block;
-          width: 38px;
-          height: 20px;
-        }
-
-        .toggle-switch input {
-          opacity: 0;
-          width: 0;
-          height: 0;
-        }
-
-        .toggle-slider {
-          position: absolute;
-          cursor: pointer;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background-color: #ccc;
-          transition: .3s;
-          border-radius: 20px;
-        }
-
-        .toggle-slider:before {
-          position: absolute;
-          content: "";
-          height: 14px;
-          width: 14px;
-          left: 3px;
-          bottom: 3px;
-          background-color: white;
-          transition: .3s;
-          border-radius: 50%;
-        }
-
-        .toggle-switch input:checked + .toggle-slider {
-          background-color: #1a1a1a;
-        }
-
-        .toggle-switch input:checked + .toggle-slider:before {
-          transform: translateX(18px);
-        }
-
-        /* Canvas visual preview */
-        .canvas-frame-container {
-          background: #ffffff;
-          border-radius: 12px;
-          padding: 16px;
-          box-shadow: 0 6px 30px rgba(0,0,0,0.06);
-          border: 1px solid #ebebeb;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .canvas-interactive {
-          border: 1px solid #cbd5e1;
-          border-radius: 6px;
-          background: #ffffff;
-          box-shadow: inset 0 2px 8px rgba(0,0,0,0.03);
-          max-width: 100%;
-          max-height: 480px;
-          object-fit: contain;
-        }
-
-        /* Small previews/links modal styles */
-        .generic-modal-overlay {
-          position: fixed;
-          top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0,0,0,0.4);
-          z-index: 10001;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          backdrop-filter: blur(4px);
-        }
-
-        .generic-modal-card {
-          background: #ffffff;
-          border-radius: 12px;
-          width: 480px;
-          max-width: 90vw;
-          max-height: 80vh;
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 8px 30px rgba(0,0,0,0.15);
-          overflow: hidden;
-        }
-
-        .generic-modal-header {
-          padding: 14px 20px;
-          border-bottom: 1px solid #ebebeb;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: #fafafa;
-        }
-
-        .generic-modal-header h3 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 700;
-        }
-
-        .generic-modal-body {
-          padding: 20px;
-          overflow-y: auto;
-          flex: 1;
-        }
-
-        .generic-modal-footer {
-          padding: 12px 20px;
-          border-top: 1px solid #ebebeb;
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          background: #fafafa;
-        }
-
-        .customizer-btn {
-          padding: 8px 14px;
-          font-size: 13px;
-          font-weight: 600;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-          border: 1px solid #cbd5e1;
-          background: #ffffff;
-          color: #1a1a1a;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-          outline: none;
-        }
-
-        .customizer-btn:hover {
-          background: #f6f6f7;
-          border-color: #94a3b8;
-        }
-
-        .customizer-btn:active {
-          background: #f1f5f9;
-        }
-
-        .customizer-btn.primary {
-          background: #1a1a1a;
-          border-color: #1a1a1a;
-          color: #ffffff;
-          box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15), 0 1px 0 rgba(0, 0, 0, 0.05);
-        }
-
-        .customizer-btn.primary:hover {
-          background: #303030;
-          border-color: #303030;
-        }
-
-        .customizer-btn.primary:active {
-          background: #000000;
-          border-color: #000000;
-        }
-
-        .customizer-btn.danger {
-          background: #d92d20;
-          border-color: #d92d20;
-          color: #ffffff;
-          box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15), 0 1px 0 rgba(0, 0, 0, 0.05);
-        }
-
-        .customizer-btn.danger:hover {
-          background: #b42318;
-          border-color: #b42318;
-        }
-
-        /* Option Card Redesign in Elements Tree */
-        .option-card-wrapper {
-          border: 1px solid #cbd5e1;
-          background: #ffffff;
-          padding: 12px;
-          border-radius: 8px;
-          cursor: grab;
-          transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-        }
-
-        .option-card-wrapper:hover {
-          border-color: #94a3b8;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-        }
-
-        .option-card-wrapper.selected {
-          border: 2px solid #1a1a1a;
-          padding: 11px; /* Offset the 2px border width to prevent layout shifting */
-          background: #ffffff;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-        }
-
-        .option-card-wrapper.drag-over {
-          border: 2px dashed #1a1a1a;
-          background: #f8fafc;
-        }
-
-        /* Background picker styling */
-        .background-grid-item {
-          border: 1px solid #ebebeb;
-          border-radius: 6px;
-          padding: 8px;
-          text-align: center;
-          cursor: pointer;
-          background: #ffffff;
-          font-size: 12px;
-          font-weight: 600;
-          min-height: 50px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.15s ease;
-          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-        }
-
-        .background-grid-item:hover {
-          border-color: #cbd5e1;
-          background: #f6f6f7;
-        }
-
-        .background-grid-item.active {
-          border: 2px solid #1a1a1a !important;
-          background: #ffffff;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-        }
-
-        /* Pagination overrides */
-        .pagination-bar {
-          padding: 12px 16px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-top: 1px solid #ebebeb;
-          background: #fafafa;
-        }
-
-        .pagination-nav {
-          display: flex;
-          gap: 6px;
-          align-items: center;
-        }
-
-        .pagination-arrow {
-          border: 1px solid #cbd5e1;
-          background: #ffffff;
-          padding: 6px 10px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-weight: 600;
-          color: #1a1a1a;
-        }
-
-        .pagination-arrow:disabled {
-          background: #f1f2f4;
-          color: #8c9196;
-          cursor: not-allowed;
-          border-color: #e1e3e6;
-        }
-
-        .page-num {
-          padding: 6px 12px;
-          font-size: 13px;
-          font-weight: 600;
-          border-radius: 6px;
-          cursor: pointer;
-          border: 1px solid transparent;
-        }
-
-        .page-num.active {
-          background: #f1f5f9;
-          color: #1a1a1a;
-          border-color: #cbd5e1;
-        }
-
-        /* Skeleton pulse animation */
-        .skeleton-pulse {
-          background: linear-gradient(90deg, #f2f2f2 25%, #e6e6e6 50%, #f2f2f2 75%);
-          background-size: 200% 100%;
-          animation: skeleton-loading 1.5s infinite ease-in-out;
-        }
-
-        @keyframes skeleton-loading {
-          0% {
-            background-position: 200% 0;
-          }
-          100% {
-            background-position: -200% 0;
-          }
-        }
-
-        /* Tooltip styling */
-        .help-tooltip-container {
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          margin-left: 6px;
-          cursor: help;
-        }
-
-        .help-tooltip-icon {
-          color: #8c9196;
-          transition: color 0.15s ease;
-          display: inline-flex;
-          align-items: center;
-        }
-
-        .help-tooltip-icon:hover {
-          color: #1a1a1a;
-        }
-
-        .help-tooltip-text {
-          visibility: hidden;
-          position: absolute;
-          bottom: 125%;
-          left: 50%;
-          transform: translateX(-50%);
-          background-color: #1a1a1a;
-          color: #ffffff;
-          text-align: center;
-          padding: 6px 10px;
-          border-radius: 6px;
-          font-size: 11px;
-          line-height: 1.4;
-          white-space: normal;
-          width: 180px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          opacity: 0;
-          transition: opacity 0.2s, transform 0.2s;
-          z-index: 10005;
-          pointer-events: none;
-          font-weight: normal;
-          text-transform: none;
-        }
-
-        .help-tooltip-text::after {
-          content: "";
-          position: absolute;
-          top: 100%;
-          left: 50%;
-          margin-left: -5px;
-          border-width: 5px;
-          border-style: solid;
-          border-color: #1a1a1a transparent transparent transparent;
-        }
-
-        .help-tooltip-container:hover .help-tooltip-text {
-          visibility: visible;
-          opacity: 1;
-          transform: translateX(-50%) translateY(-2px);
-        }
-
-        /* Save Button Spinner */
-        .save-spinner {
-          display: inline-block;
-          width: 12px;
-          height: 12px;
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          border-radius: 50%;
-          border-top-color: #ffffff;
-          animation: save-spin 0.6s linear infinite;
-          margin-right: 4px;
-        }
-        @keyframes save-spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-
       {/* 🔴 TEMPLATES LIST VIEW */}
       <div className="templates-tab-container">
         
@@ -2455,127 +1715,115 @@ export default function TemplatesPanel() {
       </div>
 
       {/* 🟢 CREATE TEMPLATE MODAL */}
-      {isCreateModalOpen && (
-        <div className="generic-modal-overlay">
-          <div className="generic-modal-card" style={{ width: "520px" }}>
-            <div className="generic-modal-header" style={{ background: "#ffffff", borderBottom: "1px solid #ebebeb", padding: "16px 20px" }}>
-              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "#1a1a1a" }}>Create New Template</h3>
-              <button
-                style={{ border: "none", background: "none", fontSize: "18px", cursor: "pointer", color: "#6d7175" }}
-                onClick={() => setIsCreateModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
+      <Modal
+        isOpen={isCreateModalOpen}
+        title="Create New Template"
+        onClose={() => setIsCreateModalOpen(false)}
+        width="520px"
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setIsCreateModalOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleConfirmCreateTemplate}
+            >
+              Create
+            </button>
+          </>
+        }
+      >
+        <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <label style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>Select Style Category / Thumbnail</label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
             
-            <div className="generic-modal-body" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
-              <div className="input-group" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <label style={{ fontSize: "13px", fontWeight: 600, color: "#212529" }}>Select Style Category / Thumbnail</label>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-                  
-                  <div
-                    onClick={() => setSelectedStyleCard("watch")}
-                    style={{
-                      border: selectedStyleCard === "watch" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
-                      background: selectedStyleCard === "watch" ? "#fafafa" : "#ffffff",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px"
-                    }}
-                  >
-                    <span style={{ fontSize: "24px" }}>⌚</span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Watch Dial Preset</div>
-                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Initials engraving preset</div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setSelectedStyleCard("neon")}
-                    style={{
-                      border: selectedStyleCard === "neon" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
-                      background: selectedStyleCard === "neon" ? "#fafafa" : "#ffffff",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px"
-                    }}
-                  >
-                    <span style={{ fontSize: "24px" }}>💡</span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Neon Sign Preset</div>
-                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Glow color & text options</div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setSelectedStyleCard("pillow")}
-                    style={{
-                      border: selectedStyleCard === "pillow" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
-                      background: selectedStyleCard === "pillow" ? "#fafafa" : "#ffffff",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px"
-                    }}
-                  >
-                    <span style={{ fontSize: "24px" }}>🛋️</span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Pillow Monogram</div>
-                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Large text centerpiece</div>
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setSelectedStyleCard("generic")}
-                    style={{
-                      border: selectedStyleCard === "generic" ? "2px solid #1a1a1a" : "1px solid #cbd5e1",
-                      background: selectedStyleCard === "generic" ? "#fafafa" : "#ffffff",
-                      borderRadius: "8px",
-                      padding: "12px",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "10px"
-                    }}
-                  >
-                    <span style={{ fontSize: "24px" }}>🎨</span>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: "13px" }}>Generic Canvas</div>
-                      <div style={{ fontSize: "11px", color: "#6d7175" }}>Blank slate builder</div>
-                    </div>
-                  </div>
-
-                </div>
+            <div
+              onClick={() => setSelectedStyleCard("watch")}
+              style={{
+                border: selectedStyleCard === "watch" ? "2px solid var(--color-text-primary)" : "1px solid var(--color-border-subtle)",
+                background: selectedStyleCard === "watch" ? "#fafafa" : "var(--color-bg-surface)",
+                borderRadius: "8px",
+                padding: "12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px"
+              }}
+            >
+              <span style={{ fontSize: "24px" }}>⌚</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Watch Dial Preset</div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-secondary)" }}>Initials engraving preset</div>
               </div>
             </div>
 
-            <div className="generic-modal-footer" style={{ borderTop: "1px solid #ebebeb", padding: "12px 20px", background: "#ffffff" }}>
-              <button
-                className="customizer-btn"
-                onClick={() => setIsCreateModalOpen(false)}
-                style={{ padding: "8px 16px", borderRadius: "6px" }}
-              >
-                Cancel
-              </button>
-              <button
-                className="customizer-btn primary"
-                onClick={handleConfirmCreateTemplate}
-                style={{ padding: "8px 16px", borderRadius: "6px" }}
-              >
-                Create
-              </button>
+            <div
+              onClick={() => setSelectedStyleCard("neon")}
+              style={{
+                border: selectedStyleCard === "neon" ? "2px solid var(--color-text-primary)" : "1px solid var(--color-border-subtle)",
+                background: selectedStyleCard === "neon" ? "#fafafa" : "var(--color-bg-surface)",
+                borderRadius: "8px",
+                padding: "12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px"
+              }}
+            >
+              <span style={{ fontSize: "24px" }}>💡</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Neon Sign Preset</div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-secondary)" }}>Glow color & text options</div>
+              </div>
             </div>
+
+            <div
+              onClick={() => setSelectedStyleCard("pillow")}
+              style={{
+                border: selectedStyleCard === "pillow" ? "2px solid var(--color-text-primary)" : "1px solid var(--color-border-subtle)",
+                background: selectedStyleCard === "pillow" ? "#fafafa" : "var(--color-bg-surface)",
+                borderRadius: "8px",
+                padding: "12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px"
+              }}
+            >
+              <span style={{ fontSize: "24px" }}>🛋️</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Pillow Monogram</div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-secondary)" }}>Large text centerpiece</div>
+              </div>
+            </div>
+
+            <div
+              onClick={() => setSelectedStyleCard("generic")}
+              style={{
+                border: selectedStyleCard === "generic" ? "2px solid var(--color-text-primary)" : "1px solid var(--color-border-subtle)",
+                background: selectedStyleCard === "generic" ? "#fafafa" : "var(--color-bg-surface)",
+                borderRadius: "8px",
+                padding: "12px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px"
+              }}
+            >
+              <span style={{ fontSize: "24px" }}>🎨</span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: "13px" }}>Generic Canvas</div>
+                <div style={{ fontSize: "11px", color: "var(--color-text-secondary)" }}>Blank slate builder</div>
+              </div>
+            </div>
+
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* 🟢 TEMPLATE CUSTOMIZER OVERLAY MODAL */}
       {isModalOpen && (
@@ -3424,205 +2672,180 @@ export default function TemplatesPanel() {
       )}
 
       {/* 👁️ BUILT-IN TEMPLATE PREVIEW MODAL */}
-      {isPreviewModalOpen && selectedTemplate && (
-        <div className="generic-modal-overlay">
-          <div className="generic-modal-card" style={{ width: "500px" }}>
-            <div className="generic-modal-header">
-              <h3>Built-in Preview: {selectedTemplate.name}</h3>
-              <button
-                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
-                onClick={() => setIsPreviewModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="generic-modal-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
-              <p style={{ alignSelf: "flex-start", margin: 0, fontSize: "13px", color: "#6d7175" }}>
-                {selectedTemplate.description}
-              </p>
-              
-              {/* Canvas Preview in Modal */}
-              <canvas
-                ref={(node) => {
-                  if (node) {
-                    const ctx = node.getContext("2d");
-                    if (ctx) {
-                      node.width = 600;
-                      node.height = 600;
-                      ctx.clearRect(0,0,600,600);
-                      ctx.fillStyle = "#ffffff";
-                      ctx.fillRect(0,0,600,600);
+      <Modal
+        isOpen={isPreviewModalOpen && !!selectedTemplate}
+        title={`Built-in Preview: ${selectedTemplate?.name || ""}`}
+        onClose={() => setIsPreviewModalOpen(false)}
+        width="500px"
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setIsPreviewModalOpen(false)}
+            >
+              Close
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                handleDuplicateBuiltIn(selectedTemplate);
+                setIsPreviewModalOpen(false);
+              }}
+            >
+              Duplicate blueprint
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <p style={{ alignSelf: "flex-start", margin: 0, fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            {selectedTemplate?.description}
+          </p>
+          
+          {/* Canvas Preview in Modal */}
+          <canvas
+            ref={(node) => {
+              if (node && selectedTemplate) {
+                const ctx = node.getContext("2d");
+                if (ctx) {
+                  node.width = 600;
+                  node.height = 600;
+                  ctx.clearRect(0,0,600,600);
+                  ctx.fillStyle = "#ffffff";
+                  ctx.fillRect(0,0,600,600);
+                  
+                  try {
+                    const config = JSON.parse(selectedTemplate.options);
+                    const opts = config.options || [];
+                    
+                    opts.forEach((opt: any) => {
+                      ctx.save();
+                      const x = opt.canvasX ?? 300;
+                      const y = opt.canvasY ?? 300;
+                      ctx.translate(x * 0.6, y * 0.6); // Scale to 360 size
                       
-                      try {
-                        const config = JSON.parse(selectedTemplate.options);
-                        const opts = config.options || [];
+                      if (opt.type === "text") {
+                        ctx.fillStyle = "#1a1a1a";
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        ctx.font = `bold ${opt.canvasFontSize * 0.6 || 36}px Arial`;
+                        ctx.fillText(opt.label, 0, 0);
+                      } else {
+                        const renderW = (opt.canvasWidth || 200) * 0.6;
+                        const renderH = (opt.canvasHeight || 200) * 0.6;
+                        ctx.fillStyle = "rgba(26,26,26,0.05)";
+                        ctx.strokeStyle = "#1a1a1a";
+                        ctx.lineWidth = 2;
+                        ctx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
+                        ctx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
                         
-                        opts.forEach((opt: any) => {
-                          ctx.save();
-                          const x = opt.canvasX ?? 300;
-                          const y = opt.canvasY ?? 300;
-                          ctx.translate(x * 0.6, y * 0.6); // Scale to 360 size
-                          
-                          if (opt.type === "text") {
-                            ctx.fillStyle = "#1a1a1a";
-                            ctx.textAlign = "center";
-                            ctx.textBaseline = "middle";
-                            ctx.font = `bold ${opt.canvasFontSize * 0.6 || 36}px Arial`;
-                            ctx.fillText(opt.label, 0, 0);
-                          } else {
-                            const renderW = (opt.canvasWidth || 200) * 0.6;
-                            const renderH = (opt.canvasHeight || 200) * 0.6;
-                            ctx.fillStyle = "rgba(26,26,26,0.05)";
-                            ctx.strokeStyle = "#1a1a1a";
-                            ctx.lineWidth = 2;
-                            ctx.fillRect(-renderW/2, -renderH/2, renderW, renderH);
-                            ctx.strokeRect(-renderW/2, -renderH/2, renderW, renderH);
-                            
-                            ctx.fillStyle = "#1a1a1a";
-                            ctx.font = "12px Arial";
-                            ctx.textAlign = "center";
-                            ctx.fillText(opt.label, 0, 0);
-                          }
-                          ctx.restore();
-                        });
-                      } catch(e) {}
-                    }
-                  }
-                }}
-                style={{ width: "300px", height: "300px", border: "1px solid #d2d5d8", borderRadius: "6px" }}
-              />
-            </div>
-            <div className="generic-modal-footer">
-              <button
-                className="customizer-btn"
-                onClick={() => setIsPreviewModalOpen(false)}
-              >
-                Close
-              </button>
-              <button
-                className="customizer-btn primary"
-                onClick={() => {
-                  handleDuplicateBuiltIn(selectedTemplate);
-                  setIsPreviewModalOpen(false);
-                }}
-              >
-                Duplicate blueprint
-              </button>
-            </div>
-          </div>
+                        ctx.fillStyle = "#1a1a1a";
+                        ctx.font = "12px Arial";
+                        ctx.textAlign = "center";
+                        ctx.fillText(opt.label, 0, 0);
+                      }
+                      ctx.restore();
+                    });
+                  } catch(e) {}
+                }
+              }
+            }}
+            style={{ width: "300px", height: "300px", border: "1px solid var(--color-border-subtle)", borderRadius: "6px" }}
+          />
         </div>
-      )}
+      </Modal>
 
       {/* 🔗 PRODUCT LINKER SELECTION MODAL */}
-      {isLinkModalOpen && (
-        <div className="generic-modal-overlay">
-          <div className="generic-modal-card">
-            <div className="generic-modal-header">
-              <h3>Link template to Shopify store products</h3>
-              <button
-                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
-                onClick={() => setIsLinkModalOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="generic-modal-body" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <span style={{ fontSize: "13px", color: "#6d7175" }}>
-                Select the products below to synchronize and enable this template configuration. Previously linked products that you uncheck will have their configurations disabled.
-              </span>
-              
-              <div style={{
-                maxHeight: "300px",
-                overflowY: "auto",
-                border: "1px solid #ebebeb",
-                borderRadius: "6px",
-                padding: "8px",
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px"
-              }}>
-                {products.length === 0 ? (
-                  <span style={{ padding: "20px", textAlign: "center", color: "#8c9196" }}>No products found in this store</span>
-                ) : (
-                  products.map((p: any) => {
-                    const isLinked = linkedProducts.includes(p.id);
-                    return (
-                      <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", background: isLinked ? "#fafafa" : "#ffffff", border: isLinked ? "1px solid #1a1a1a" : "1px solid #cbd5e1", transition: "all 0.1s ease" }}>
-                        <input
-                          type="checkbox"
-                          checked={isLinked}
-                          onChange={() => toggleProductLink(p.id)}
-                          style={{ accentColor: "#1a1a1a", cursor: "pointer" }}
-                        />
-                        {p.featuredImage?.url ? (
-                          <img src={p.featuredImage.url} alt="" style={{ width: "32px", height: "32px", objectFit: "cover", borderRadius: "4px" }} />
-                        ) : (
-                          <div style={{ width: "32px", height: "32px", background: "#f1f2f4", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
-                        )}
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#1a1a1a" }}>{p.title}</span>
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="generic-modal-footer">
-              <button
-                className="customizer-btn"
-                onClick={() => setIsLinkModalOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="customizer-btn primary"
-                onClick={handleSaveProductLinks}
-              >
-                Apply Links
-              </button>
-            </div>
+      <Modal
+        isOpen={isLinkModalOpen}
+        title="Link template to Shopify store products"
+        onClose={() => setIsLinkModalOpen(false)}
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setIsLinkModalOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleSaveProductLinks}
+            >
+              Apply Links
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <span style={{ fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            Select the products below to synchronize and enable this template configuration. Previously linked products that you uncheck will have their configurations disabled.
+          </span>
+          
+          <div style={{
+            maxHeight: "300px",
+            overflowY: "auto",
+            border: "1px solid var(--color-border-light)",
+            borderRadius: "6px",
+            padding: "8px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px"
+          }}>
+            {products.length === 0 ? (
+              <span style={{ padding: "20px", textAlign: "center", color: "var(--color-text-secondary)" }}>No products found in this store</span>
+            ) : (
+              products.map((p: any) => {
+                const isLinked = linkedProducts.includes(p.id);
+                return (
+                  <label key={p.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", borderRadius: "6px", cursor: "pointer", background: isLinked ? "#fafafa" : "var(--color-bg-surface)", border: isLinked ? "1px solid var(--color-text-primary)" : "1px solid var(--color-border-subtle)", transition: "all 0.1s ease" }}>
+                    <input
+                      type="checkbox"
+                      checked={isLinked}
+                      onChange={() => toggleProductLink(p.id)}
+                      style={{ accentColor: "var(--color-text-primary)", cursor: "pointer" }}
+                    />
+                    {p.featuredImage?.url ? (
+                      <img src={p.featuredImage.url} alt="" style={{ width: "32px", height: "32px", objectFit: "cover", borderRadius: "4px" }} />
+                    ) : (
+                      <div style={{ width: "32px", height: "32px", background: "var(--color-bg-primary)", borderRadius: "4px", display: "flex", alignItems: "center", justifyContent: "center" }}>📦</div>
+                    )}
+                    <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>{p.title}</span>
+                  </label>
+                );
+              })
+            )}
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* ⚠️ UNSAVED CHANGES CONFIRMATION MODAL */}
-      {isCloseConfirmOpen && (
-        <div className="generic-modal-overlay">
-          <div className="generic-modal-card" style={{ width: "420px" }}>
-            <div className="generic-modal-header">
-              <h3 style={{ margin: 0, color: "#d93838", display: "flex", alignItems: "center", gap: "6px" }}>
-                ⚠️ Discard Unsaved Changes?
-              </h3>
-              <button
-                style={{ border: "none", background: "none", fontSize: "16px", cursor: "pointer" }}
-                onClick={() => setIsCloseConfirmOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="generic-modal-body">
-              <p style={{ margin: 0, fontSize: "14px", color: "#2c3e50", lineHeight: "1.5" }}>
-                You have unsaved changes in your template. If you close the customizer now, all unsaved changes will be lost.
-              </p>
-            </div>
-            <div className="generic-modal-footer">
-              <button
-                className="customizer-btn"
-                onClick={() => setIsCloseConfirmOpen(false)}
-              >
-                Keep Editing
-              </button>
-              <button
-                className="customizer-btn danger"
-                onClick={handleForceClose}
-              >
-                Discard Changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={isCloseConfirmOpen}
+        title="⚠️ Discard Unsaved Changes?"
+        onClose={() => setIsCloseConfirmOpen(false)}
+        width="420px"
+        footer={
+          <>
+            <button
+              className="btn-secondary"
+              onClick={() => setIsCloseConfirmOpen(false)}
+            >
+              Keep Editing
+            </button>
+            <button
+              className="btn-danger"
+              onClick={handleForceClose}
+            >
+              Discard Changes
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: 0, fontSize: "14px", color: "var(--color-text-primary)", lineHeight: "1.5" }}>
+          You have unsaved changes in your template. If you close the customizer now, all unsaved changes will be lost.
+        </p>
+      </Modal>
 
     </s-page>
   );
