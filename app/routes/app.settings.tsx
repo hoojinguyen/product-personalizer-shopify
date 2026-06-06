@@ -419,6 +419,35 @@ export default function AppSettingsPanel() {
           grid-column: 2;
           grid-row: 3;
         }
+        .form-input {
+          width: 100%;
+          padding: 8px 12px;
+          font-size: 13px;
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          outline: none;
+          background-color: #ffffff;
+          color: #202223;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+          box-sizing: border-box;
+        }
+        .form-input:focus {
+          border-color: #008060;
+          box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.15);
+        }
+        .btn-action-secondary {
+          border: 1px solid #babfc3;
+          border-radius: 6px;
+          background: #ffffff;
+          color: #202223;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .btn-action-secondary:hover {
+          background: #f6f6f7;
+          border-color: #8c9196;
+        }
       `}</style>
 
       {/* Main Settings Grid Layout */}
@@ -546,6 +575,9 @@ export default function AppSettingsPanel() {
           buttonColor={buttonColor}
           buttonTextColor={buttonTextColor}
           personalizeBtnText={personalizeBtnText}
+          dropdownSpacing={dropdownSpacing}
+          optionsColumns={optionsColumns}
+          layoutMode={layoutMode}
         />
 
       </s-grid>

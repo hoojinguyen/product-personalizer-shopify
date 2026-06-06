@@ -291,7 +291,7 @@ export const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({
               <div className="customizer-sidebar">
                 {/* View settings tab bar */}
                 <div className="customizer-subtabs">
-                  <div className="customizer-subtab active">Main View</div>
+                  <div className="customizer-subtab active">{viewName || "Main View"}</div>
                 </div>
 
                 {/* Sidebar Scrollable accordion panels */}
@@ -583,10 +583,15 @@ export const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({
                                   handleReorderOption(fromIdx, idx);
                                 }}
                                 className={`option-card-wrapper ${dragOverIdx === idx ? "drag-over" : isSelected ? "selected" : ""}`}
+                                onClick={() => {
+                                  if (!isSelected) {
+                                    setSelectedOptionId(opt.id);
+                                  }
+                                }}
                               >
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: isSelected ? "8px" : "0" }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <span style={{ cursor: "grab", color: "#8c9196", display: "inline-flex", alignItems: "center" }} title="Drag to reorder">
+                                    <span style={{ cursor: "grab", color: "#8c9196", display: "inline-flex", alignItems: "center" }} title="Drag to reorder" onClick={(e) => e.stopPropagation()}>
                                       <svg width="12" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                                         <circle cx="9" cy="5" r="1"/>
                                         <circle cx="9" cy="12" r="1"/>
@@ -596,21 +601,36 @@ export const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({
                                         <circle cx="15" cy="19" r="1"/>
                                       </svg>
                                     </span>
-                                    <span style={{ fontWeight: 700, fontSize: "12px", color: isSelected ? "#1a1a1a" : "#6d7175" }}>
-                                      Option Layer #{idx + 1}
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700, fontSize: "12px", color: isSelected ? "#1a1a1a" : "#6d7175" }}>
+                                      <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.5"
+                                        style={{
+                                          transform: isSelected ? "rotate(90deg)" : "rotate(0deg)",
+                                          transition: "transform 0.2s ease",
+                                          color: "#8c9196"
+                                        }}
+                                      >
+                                        <polyline points="9 18 15 12 9 6" />
+                                      </svg>
+                                      Option #{idx + 1}: {opt.label || "Untitled Option"}
                                     </span>
                                   </div>
                                   {pendingRemoveId === opt.id ? (
-                                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }} onClick={(e) => e.stopPropagation()}>
                                       <span style={{ fontSize: "10px", color: "#6d7175" }}>Remove?</span>
                                       <button
-                                        onClick={() => { handleRemoveOption(opt.id); setPendingRemoveId(null); }}
+                                        onClick={(e) => { e.stopPropagation(); handleRemoveOption(opt.id); setPendingRemoveId(null); }}
                                         style={{ border: "none", background: "#d92d20", color: "#fff", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2.5px 8px", borderRadius: "4px" }}
                                       >
                                         Yes
                                       </button>
                                       <button
-                                        onClick={() => setPendingRemoveId(null)}
+                                        onClick={(e) => { e.stopPropagation(); setPendingRemoveId(null); }}
                                         style={{ border: "1px solid #cbd5e1", background: "#fff", color: "#1a1a1a", fontSize: "10px", fontWeight: "bold", cursor: "pointer", padding: "2.5px 8px", borderRadius: "4px" }}
                                       >
                                         Cancel
@@ -618,7 +638,7 @@ export const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({
                                     </div>
                                   ) : (
                                     <button
-                                      onClick={() => setPendingRemoveId(opt.id)}
+                                      onClick={(e) => { e.stopPropagation(); setPendingRemoveId(opt.id); }}
                                       style={{ border: "none", background: "none", color: "#d92d20", fontSize: "11px", fontWeight: "bold", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "2px" }}
                                     >
                                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -626,13 +646,15 @@ export const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({
                                     </button>
                                   )}
                                 </div>
-                                <input
-                                  type="text"
-                                  className="custom-input"
-                                  style={{ width: "100%", padding: "4px 8px", fontSize: "12px", marginBottom: "8px" }}
-                                  value={opt.label}
-                                  onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
-                                />
+                                {isSelected && (
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="text"
+                                      className="custom-input"
+                                      style={{ width: "100%", padding: "4px 8px", fontSize: "12px", marginBottom: "8px" }}
+                                      value={opt.label}
+                                      onChange={(e) => handleUpdateOption(opt.id, { label: e.target.value })}
+                                    />
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
                                   <div>
                                     <label style={{ fontSize: "9px", color: "#8c9196", textTransform: "uppercase" }}>Type</label>
@@ -795,6 +817,117 @@ export const TemplateEditorModal: React.FC<TemplateEditorModalProps> = ({
                                         />
                                       </div>
                                     </div>
+                                  </div>
+                                )}
+
+                                {/* Visibility Logic Rules */}
+                                <div style={{ marginTop: "10px", borderTop: "1px dashed #cbd5e1", paddingTop: "10px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                                    <label style={{ fontSize: "10px", fontWeight: "bold" }}>Visibility Rules</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updatedRules = [...(opt.conditionalRules || []), { fieldId: "", operator: "equals" as const, value: "" }];
+                                        handleUpdateOptionAndPush(opt.id, { conditionalRules: updatedRules });
+                                      }}
+                                      style={{ border: "none", background: "none", color: "#008060", fontSize: "10px", fontWeight: "bold", cursor: "pointer" }}
+                                    >
+                                      + Add Rule
+                                    </button>
+                                  </div>
+
+                                  {(opt.conditionalRules || []).length === 0 ? (
+                                    <div style={{ fontSize: "10px", color: "#8c9196", fontStyle: "italic" }}>
+                                      Always visible.
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                      {(opt.conditionalRules || []).map((rule, ruleIdx) => (
+                                        <div key={ruleIdx} style={{
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          gap: "6px",
+                                          padding: "8px",
+                                          background: "#f8f9fa",
+                                          border: "1px solid #e2e8f0",
+                                          borderRadius: "4px"
+                                        }}>
+                                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                            <span style={{ fontSize: "9px", fontWeight: "bold", color: "#6d7175" }}>Rule #{ruleIdx + 1}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updatedRules = (opt.conditionalRules || []).filter((_, rIdx) => rIdx !== ruleIdx);
+                                                handleUpdateOptionAndPush(opt.id, { conditionalRules: updatedRules });
+                                              }}
+                                              style={{ border: "none", background: "none", color: "#d92d20", fontSize: "9px", fontWeight: "bold", cursor: "pointer" }}
+                                            >
+                                              Remove
+                                            </button>
+                                          </div>
+
+                                          <div className="input-group" style={{ margin: 0 }}>
+                                            <label style={{ fontSize: "8px", textTransform: "uppercase" }}>If Option</label>
+                                            <select
+                                              className="custom-input"
+                                              style={{ width: "100%", padding: "2px 4px", fontSize: "10px", height: "24px" }}
+                                              value={rule.fieldId}
+                                              onChange={(e) => {
+                                                const updatedRules = [...(opt.conditionalRules || [])];
+                                                updatedRules[ruleIdx].fieldId = e.target.value;
+                                                handleUpdateOptionAndPush(opt.id, { conditionalRules: updatedRules });
+                                              }}
+                                            >
+                                              <option value="">Select option...</option>
+                                              {options.filter(o => o.id !== opt.id).map(o => (
+                                                <option key={o.id} value={o.id}>{o.label}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          <div className="input-group" style={{ margin: 0 }}>
+                                            <label style={{ fontSize: "8px", textTransform: "uppercase" }}>Condition</label>
+                                            <select
+                                              className="custom-input"
+                                              style={{ width: "100%", padding: "2px 4px", fontSize: "10px", height: "24px" }}
+                                              value={rule.operator}
+                                              onChange={(e) => {
+                                                const updatedRules = [...(opt.conditionalRules || [])];
+                                                updatedRules[ruleIdx].operator = e.target.value as any;
+                                                handleUpdateOptionAndPush(opt.id, { conditionalRules: updatedRules });
+                                              }}
+                                            >
+                                              <option value="equals">Equals</option>
+                                              <option value="not_equals">Not Equals</option>
+                                              <option value="checked">Checked</option>
+                                              <option value="unchecked">Unchecked</option>
+                                            </select>
+                                          </div>
+
+                                          {rule.operator !== "checked" && rule.operator !== "unchecked" && (
+                                            <div className="input-group" style={{ margin: 0 }}>
+                                              <label style={{ fontSize: "8px", textTransform: "uppercase" }}>Value</label>
+                                              <input
+                                                type="text"
+                                                className="custom-input"
+                                                style={{ width: "100%", padding: "2px 4px", fontSize: "10px", height: "24px" }}
+                                                value={rule.value}
+                                                onChange={(e) => {
+                                                  const updatedRules = [...(opt.conditionalRules || [])];
+                                                  updatedRules[ruleIdx].value = e.target.value;
+                                                  handleUpdateOption(opt.id, { conditionalRules: updatedRules });
+                                                }}
+                                                onBlur={() => {
+                                                  handleUpdateOptionAndPush(opt.id, { conditionalRules: opt.conditionalRules });
+                                                }}
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                                   </div>
                                 )}
                               </div>

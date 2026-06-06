@@ -1931,7 +1931,7 @@ export default function TemplatesPanel() {
           background: #ffffff;
           padding: 12px;
           border-radius: 8px;
-          cursor: grab;
+          cursor: pointer;
           transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
@@ -1946,6 +1946,7 @@ export default function TemplatesPanel() {
           padding: 11px; /* Offset the 2px border width to prevent layout shifting */
           background: #ffffff;
           box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+          cursor: default;
         }
 
         .option-card-wrapper.drag-over {
@@ -2508,6 +2509,7 @@ export default function TemplatesPanel() {
         linkedProducts={linkedProducts}
         toggleProductLink={toggleProductLink}
         handleSaveProductLinks={handleSaveProductLinks}
+        setLinkedProducts={setLinkedProducts}
       />
 
       {/* ⚠️ UNSAVED CHANGES CONFIRMATION MODAL */}
