@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Personalizer — Full Pipeline Explainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface-2: #1a1a28;
+    --surface-3: #22223a;
+    --border: #2a2a42;
+    --text: #e8e8f0;
+    --text-dim: #8888a8;
+    --text-faint: #55557a;
+    --brand: #00d4aa;
+    --brand-dim: rgba(0, 212, 170, 0.15);
+    --brand-glow: rgba(0, 212, 170, 0.3);
+    --accent: #6366f1;
+    --accent-dim: rgba(99, 102, 241, 0.15);
+    --warn: #f59e0b;
+    --warn-dim: rgba(245, 158, 11, 0.12);
+    --danger: #ef4444;
+    --shopify: #96bf48;
+    --shopify-dim: rgba(150, 191, 72, 0.12);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --font: 'Inter', -apple-system, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 16px;
+    overflow-x: hidden;
+  }
+
+  /* Hero */
+  .hero {
+    position: relative;
+    padding: 80px 40px 60px;
+    text-align: center;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -200px; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 800px;
+    background: radial-gradient(circle, var(--brand-glow) 0%, transparent 60%);
+    pointer-events: none;
+    opacity: 0.4;
+  }
+  .hero h1 {
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--brand) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .hero .subtitle {
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    max-width: 680px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  /* Layout */
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* Section */
+  section {
+    margin-bottom: 56px;
+  }
+  section > h2 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section > h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--brand-dim);
+    color: var(--brand);
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 28px 0 12px;
+    color: var(--text);
+  }
+
+  p { margin-bottom: 14px; color: var(--text); }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .card.glow {
+    border-color: rgba(0, 212, 170, 0.25);
+    box-shadow: 0 0 30px rgba(0, 212, 170, 0.06);
+  }
+
+  /* Callouts */
+  .callout {
+    border-radius: var(--radius-sm);
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .callout .icon { font-size: 1.3rem; flex-shrink: 0; margin-top: 1px; }
+  .callout.shopify {
+    background: var(--shopify-dim);
+    border-left: 3px solid var(--shopify);
+  }
+  .callout.insight {
+    background: var(--accent-dim);
+    border-left: 3px solid var(--accent);
+  }
+  .callout.warn {
+    background: var(--warn-dim);
+    border-left: 3px solid var(--warn);
+  }
+  .callout.try {
+    background: var(--brand-dim);
+    border-left: 3px solid var(--brand);
+  }
+
+  /* Code */
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--surface-2);
+    padding: 2px 7px;
+    border-radius: 4px;
+    color: var(--brand);
+  }
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 18px 22px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.65;
+    margin: 14px 0 18px;
+    color: var(--text);
+  }
+  pre .comment { color: var(--text-faint); }
+  pre .keyword { color: var(--accent); }
+  pre .string { color: var(--brand); }
+  pre .highlight { background: rgba(0, 212, 170, 0.1); display: inline; padding: 1px 0; }
+
+  /* File link */
+  .file-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 3px 10px;
+    background: var(--accent-dim);
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  .file-link:hover { background: rgba(99, 102, 241, 0.25); }
+
+  /* Pipeline diagram */
+  .pipeline {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+    margin: 30px 0;
+    overflow-x: auto;
+    padding: 10px 0;
+  }
+  .pipeline-node {
+    flex: 1;
+    min-width: 140px;
+    padding: 18px 14px;
+    text-align: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+  }
+  .pipeline-node:hover, .pipeline-node.active {
+    border-color: var(--brand);
+    background: var(--surface-2);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0, 212, 170, 0.1);
+  }
+  .pipeline-node .emoji { font-size: 1.6rem; margin-bottom: 6px; }
+  .pipeline-node .label { font-size: 0.78rem; font-weight: 600; color: var(--text); }
+  .pipeline-node .bridge {
+    font-size: 0.65rem;
+    color: var(--text-faint);
+    margin-top: 6px;
+    font-style: italic;
+  }
+  .pipeline-arrow {
+    display: flex;
+    align-items: center;
+    color: var(--text-faint);
+    font-size: 1.2rem;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  /* Sequence diagram */
+  .sequence {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin: 20px 0;
+  }
+  .seq-step {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    opacity: 0.7;
+    transition: opacity 0.3s;
+  }
+  .seq-step:hover { opacity: 1; }
+  .seq-step:last-child { border-bottom: none; }
+  .seq-step .step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .seq-step .step-num.storefront { background: var(--brand-dim); color: var(--brand); }
+  .seq-step .step-num.shopify { background: var(--shopify-dim); color: var(--shopify); }
+  .seq-step .step-num.server { background: var(--accent-dim); color: var(--accent); }
+  .seq-step .step-body { flex: 1; }
+  .seq-step .step-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 3px; }
+  .seq-step .step-desc { font-size: 0.82rem; color: var(--text-dim); }
+  .seq-step .step-file { margin-top: 6px; }
+
+  /* Data table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 20px;
+    font-size: 0.85rem;
+  }
+  th, td {
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  td { color: var(--text); }
+  tr:hover td { background: var(--surface); }
+
+  /* Quiz */
+  .quiz {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin: 24px 0;
+  }
+  .quiz h4 {
+    font-size: 1rem;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .quiz-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px 16px;
+    margin: 6px 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .quiz-option:hover {
+    border-color: var(--brand);
+    background: var(--brand-dim);
+  }
+  .quiz-option.correct {
+    border-color: var(--brand);
+    background: var(--brand-dim);
+    pointer-events: none;
+  }
+  .quiz-option.wrong {
+    border-color: var(--danger);
+    background: rgba(239, 68, 68, 0.1);
+    pointer-events: none;
+  }
+  .quiz-option.disabled { pointer-events: none; opacity: 0.5; }
+  .quiz-feedback {
+    margin-top: 12px;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    display: none;
+  }
+  .quiz-feedback.show { display: block; }
+  .quiz-feedback.correct-fb { background: var(--brand-dim); border-left: 3px solid var(--brand); }
+  .quiz-feedback.wrong-fb { background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--danger); }
+
+  /* Accordion */
+  details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin: 12px 0;
+    transition: border-color 0.2s;
+  }
+  details[open] { border-color: var(--brand); }
+  details summary {
+    padding: 14px 18px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.92rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  details summary::before {
+    content: '▸';
+    transition: transform 0.2s;
+    color: var(--text-faint);
+  }
+  details[open] summary::before { transform: rotate(90deg); color: var(--brand); }
+  details .detail-body { padding: 0 18px 18px; }
+
+  /* Divider */
+  hr {
+    border: none;
+    height: 1px;
+    background: var(--border);
+    margin: 48px 0;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Nav TOC */
+  .toc {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 56px;
+    height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 0;
+    gap: 6px;
+    z-index: 100;
+  }
+  .toc a {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    text-decoration: none;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .toc a:hover {
+    background: var(--brand-dim);
+    transform: scale(1.1);
+  }
+  .toc a .tooltip {
+    position: absolute;
+    left: 52px;
+    white-space: nowrap;
+    background: var(--surface-3);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .toc a:hover .tooltip { opacity: 1; }
+
+  .main-content { margin-left: 56px; }
+
+  /* Animated list */
+  ul, ol {
+    padding-left: 20px;
+    margin: 10px 0 16px;
+  }
+  li {
+    margin-bottom: 8px;
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  li strong { color: var(--text); }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .toc { display: none; }
+    .main-content { margin-left: 0; }
+    .hero h1 { font-size: 1.8rem; }
+    .pipeline { flex-direction: column; }
+    .pipeline-arrow { transform: rotate(90deg); justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOC sidebar -->
+<nav class="toc">
+  <a href="#pipeline"><span>🗺️</span><span class="tooltip">Pipeline Overview</span></a>
+  <a href="#s1"><span>⚙️</span><span class="tooltip">1. Merchant Configures</span></a>
+  <a href="#s2"><span>🔄</span><span class="tooltip">2. Template Sync</span></a>
+  <a href="#s3"><span>🛍️</span><span class="tooltip">3. Buyer Customizes</span></a>
+  <a href="#s4"><span>🛒</span><span class="tooltip">4. Cart & Checkout</span></a>
+  <a href="#s5"><span>📦</span><span class="tooltip">5. Order Fulfillment</span></a>
+  <a href="#db"><span>🗃️</span><span class="tooltip">Database Models</span></a>
+  <a href="#quiz-section"><span>🧪</span><span class="tooltip">Knowledge Check</span></a>
+</nav>
+
+<div class="main-content">
+
+<!-- Hero -->
+<header class="hero">
+  <h1>Product Personalizer — Full Pipeline</h1>
+  <p class="subtitle">An end-to-end walkthrough of how every feature works — from merchant configuration to manufacturing fulfillment.</p>
+</header>
+
+<div class="container">
+
+<!-- ━━━ THE PIPELINE ━━━ -->
+<section id="pipeline">
+  <h2><span class="num">🗺️</span> The 5-Subsystem Pipeline</h2>
+  <p>The app is <strong>not a monolith</strong>. It's a pipeline of 5 cooperating subsystems, each bridged by a specific Shopify platform primitive. Every feature in the app lives in one of these subsystems.</p>
+
+  <div class="pipeline">
+    <div class="pipeline-node" onclick="scrollTo('#s1')">
+      <div class="emoji">⚙️</div>
+      <div class="label">Admin Dashboard</div>
+      <div class="bridge">Remix routes</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-node" onclick="scrollTo('#s2')">
+      <div class="emoji">🔄</div>
+      <div class="label">Template Sync</div>
+      <div class="bridge">→ metafields</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-node" onclick="scrollTo('#s3')">
+      <div class="emoji">🛍️</div>
+      <div class="label">Storefront Widget</div>
+      <div class="bridge">→ line-item props</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-node" onclick="scrollTo('#s4')">
+      <div class="emoji">🛒</div>
+      <div class="label">Cart Transform</div>
+      <div class="bridge">→ webhook</div>
+    </div>
+    <div class="pipeline-arrow">→</div>
+    <div class="pipeline-node" onclick="scrollTo('#s5')">
+      <div class="emoji">📦</div>
+      <div class="label">Order Compiler</div>
+      <div class="bridge">→ fulfillment ZIP</div>
+    </div>
+  </div>
+
+  <div class="callout shopify">
+    <span class="icon">🟢</span>
+    <div>
+      <strong>Shopify concept: How subsystems talk</strong><br>
+      Each arrow uses a different Shopify primitive: <strong>Metafields</strong> (JSON on products), <strong>line-item properties</strong> (key-value pairs in the cart), and <strong>webhooks</strong> (HTTP callbacks on events). These are the "wires" between subsystems. As a Shopify newcomer, you'll encounter all three — this explainer teaches each one at the point it appears.
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ━━━ SECTION 1: ADMIN DASHBOARD ━━━ -->
+<section id="s1">
+  <h2><span class="num">1</span> Merchant Configures (Admin Dashboard)</h2>
+  <p>The admin dashboard is a Remix app embedded inside the Shopify admin. It has 6 pages, each a separate route file:</p>
+
+  <table>
+    <thead>
+      <tr><th>Page</th><th>Route File</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>📊 Dashboard</td><td><code>app._index.tsx</code></td><td>Quota metrics, quick-start guide, onboarding</td></tr>
+      <tr><td>🧩 Templates</td><td><code>app.templates.tsx</code></td><td>Create/edit reusable personalization blueprints with WYSIWYG canvas</td></tr>
+      <tr><td>📦 Products</td><td><code>app.configure.tsx</code></td><td>Per-product config table, toggle on/off, workspace editor</td></tr>
+      <tr><td>🎨 Assets</td><td><code>app.assets.tsx</code></td><td>Global font sets, color palettes, clipart libraries, option lists</td></tr>
+      <tr><td>📋 Orders</td><td><code>app.orders.tsx</code></td><td>Personalized order tracking, ZIP downloads, sync</td></tr>
+      <tr><td>⚙️ Settings</td><td><code>app.settings.tsx</code></td><td>Global appearance, export, and behavior settings</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The Template Editor — Where It All Starts</h3>
+  <p>The most complex page is the <strong>Template Editor</strong> (<code>app.templates.tsx</code> — 3,128 lines). A <strong>Template</strong> is a reusable blueprint containing:</p>
+  <ul>
+    <li>A list of <strong>customization options</strong> (text, swatch, file upload, clipart, checkbox, dropdown)</li>
+    <li>Canvas positioning for each option (X, Y, width, height, rotation, font size) on an 800×800 coordinate grid</li>
+    <li>Layout mode (stacked, tabs, or modal)</li>
+    <li>Brand colors and cart behavior settings</li>
+    <li>Optional <strong>upcharge prices</strong> per option</li>
+    <li>Conditional visibility rules (show option B only when option A equals "Yes")</li>
+  </ul>
+
+  <div class="callout insight">
+    <span class="icon">💡</span>
+    <div>
+      <strong>Why templates matter</strong><br>
+      Without templates, a merchant with 500 products would configure each one individually. Templates let them configure <em>once</em> and bulk-link to hundreds of products. The sync engine (Section 2) propagates changes downstream.
+    </div>
+  </div>
+
+  <details>
+    <summary>🎨 The Asset Directory — Shared Brand Resources</summary>
+    <div class="detail-body">
+      <p>Assets are global resources reusable across templates and products:</p>
+      <table>
+        <thead><tr><th>Type</th><th>Storage</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>🔤 Fonts</td><td>JSON: <code>{url, format}</code> — CDN link</td><td>VintageScript.ttf uploaded to Shopify Files</td></tr>
+          <tr><td>🎨 Colors</td><td>Comma-separated hex</td><td><code>#D2B48C, #3E2723, #27A9E1</code></td></tr>
+          <tr><td>📋 Options</td><td>Comma-separated strings</td><td><code>Size 5, Size 6, Size 7</code></td></tr>
+          <tr><td>🖼️ Clipart</td><td>JSON array: <code>[{id, name, url}]</code></td><td>Preset graphics for swatches</td></tr>
+        </tbody>
+      </table>
+      <p>When a template option's <code>choicesType</code> is set to <code>"global"</code>, it references an <code>assetSetId</code> pointing to one of these assets. Changing the asset propagates to all customizers using it.</p>
+      <p><strong>Font upload flow:</strong> Client calls <code>staged_upload</code> → gets pre-signed S3 URL → uploads file directly to S3 → calls <code>register_file</code> → server registers in Shopify Files API → polls for CDN URL → saves to SQLite.</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>⚙️ Global Settings — Controls Storefront Behavior</summary>
+    <div class="detail-body">
+      <p>The settings page (<code>app.settings.tsx</code>) stores 11 persisted fields in the <code>AppSettings</code> model:</p>
+      <table>
+        <thead><tr><th>Field</th><th>Default</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>layoutMode</td><td>stacked</td><td>How options display: stacked / tabs / modal</td></tr>
+          <tr><td>brandColor</td><td>#008060</td><td>Accent color throughout customizer</td></tr>
+          <tr><td>buttonColor</td><td>#008060</td><td>Submit button background</td></tr>
+          <tr><td>exportFormat</td><td>png</td><td>Print file output format</td></tr>
+          <tr><td>dpiResolution</td><td>300</td><td>Export resolution for manufacturing</td></tr>
+          <tr><td>customCss / customJs</td><td>null</td><td>Injected into storefront <code>&lt;head&gt;</code></td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <span class="icon">⚠️</span>
+        <div><strong>Watch out:</strong> Many settings visible in the UI (field style, sticky preview, zoom hover, padding, label colors, tooltip colors) are <strong>local React state only</strong> and are NOT persisted to the database. Only the 11 fields in the AppSettings model are actually saved.</div>
+      </div>
+    </div>
+  </details>
+</section>
+
+<hr>
+
+<!-- ━━━ SECTION 2: TEMPLATE SYNC ━━━ -->
+<section id="s2">
+  <h2><span class="num">2</span> Template Sync — The Bridge to Storefront</h2>
+  <p>When a merchant saves a template or configures a product, how does that data reach the buyer's browser? This is the job of <strong>Template Sync</strong>.</p>
+
+  <div class="callout shopify">
+    <span class="icon">🟢</span>
+    <div>
+      <strong>Shopify concept: Metafields</strong><br>
+      A <strong>metafield</strong> is a key-value pair attached to a Shopify resource (product, order, shop). Think of it as a custom column on a database table. This app uses the metafield namespace <code>app</code> and key <code>customization_config</code> to store JSON configuration on each product. It's set to <code>PUBLIC_READ</code> access so the storefront widget can read it — this is critical.
+    </div>
+  </div>
+
+  <h3>The Sync Engine Architecture</h3>
+  <p>The sync engine lives in <code>app/utils/templateSync.ts</code> (439 lines) and uses a <strong>hexagonal architecture</strong> (ports & adapters):</p>
+
+  <pre><span class="comment">// Port — abstract interface (testable, swappable)</span>
+<span class="keyword">interface</span> ShopifyAdminPort {
+  fetchProducts(ids): Product[]
+  <span class="highlight">publishMetafields(payloads): void  <span class="comment">// ← the core operation</span></span>
+}
+
+<span class="comment">// Adapter — concrete implementation using Admin GraphQL</span>
+<span class="keyword">class</span> ShopifyAdminGraphQLAdapter <span class="keyword">implements</span> ShopifyAdminPort {
+  publishMetafields(payloads) {
+    <span class="comment">// Calls Shopify's metafieldsSet mutation</span>
+    admin.graphql(<span class="string">`mutation metafieldsSet($metafields: [MetafieldsSetInput!]!)`</span>, ...)
+  }
+}
+
+<span class="comment">// Facade — public API the routes call</span>
+<span class="keyword">class</span> PersonalizationConfigSync {
+  <span class="keyword">static</span> syncTemplate(context, input, productIds)     <span class="comment">// template → DB + products</span>
+  <span class="keyword">static</span> unsyncTemplate(context, templateId)            <span class="comment">// delete + unlink all</span>
+  <span class="keyword">static</span> syncProductConfig(context, productId, config)  <span class="comment">// single product</span>
+  <span class="keyword">static</span> publishRawMetafields(context, payloads)        <span class="comment">// bulk raw publish</span>
+}</pre>
+
+  <h3>What Gets Written to the Product Metafield</h3>
+  <p>When sync runs, this JSON structure is written to <code>product.metafields.app.customization_config</code>:</p>
+
+  <pre>{
+  <span class="string">"enabled"</span>: <span class="keyword">true</span>,
+  <span class="string">"templateId"</span>: <span class="string">"a1b2c3d4-..."</span>,
+  <span class="string">"layoutMode"</span>: <span class="string">"stacked"</span>,
+  <span class="string">"brandColor"</span>: <span class="string">"#008060"</span>,
+  <span class="string">"heading"</span>: <span class="string">"Personalize Your Item"</span>,
+  <span class="string">"options"</span>: [
+    {
+      <span class="string">"id"</span>: <span class="string">"opt_1"</span>,
+      <span class="string">"type"</span>: <span class="string">"text"</span>,
+      <span class="string">"label"</span>: <span class="string">"Your Name"</span>,
+      <span class="string">"required"</span>: <span class="keyword">true</span>,
+      <span class="string">"maxChars"</span>: 20,
+      <span class="string">"priceUpcharge"</span>: 5.00,
+      <span class="string">"canvasX"</span>: 300, <span class="string">"canvasY"</span>: 400,
+      <span class="string">"canvasWidth"</span>: 200, <span class="string">"canvasHeight"</span>: 50,
+      <span class="string">"canvasRotation"</span>: 0, <span class="string">"canvasFontSize"</span>: 24
+    }
+  ]
+}</pre>
+
+  <h3>Template → Product Linking</h3>
+  <div class="sequence">
+    <div class="seq-step">
+      <div class="step-num server">1</div>
+      <div class="step-body">
+        <div class="step-title">Merchant saves template with product links</div>
+        <div class="step-desc">Route calls <code>PersonalizationConfigSync.syncTemplate()</code></div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num server">2</div>
+      <div class="step-body">
+        <div class="step-title">Upsert template in SQLite</div>
+        <div class="step-desc">Template record includes <code>_linkedProductIds</code> in the options JSON (private field, stripped before metafield publish)</div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num server">3</div>
+      <div class="step-body">
+        <div class="step-title">Compute product delta</div>
+        <div class="step-desc">Compares previous <code>_linkedProductIds</code> with new target list. Products removed get <code>{enabled: false, options: []}</code></div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num shopify">4</div>
+      <div class="step-body">
+        <div class="step-title">Bulk publish metafields via Admin GraphQL</div>
+        <div class="step-desc"><code>metafieldsSet</code> mutation writes the Personalization Config JSON to each linked product</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout try">
+    <span class="icon">🔍</span>
+    <div>
+      <strong>Try this:</strong> Open <code>app/utils/templateSync.ts</code> and find the <code>TemplateDownstreamSynchronizer</code> class at line 263. Trace how <code>_linkedProductIds</code> delta computation works in the <code>synchronize()</code> method.
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ━━━ SECTION 3: BUYER CUSTOMIZES ━━━ -->
+<section id="s3">
+  <h2><span class="num">3</span> Buyer Customizes on Storefront</h2>
+  <p>Now the config is on the product as a metafield. When a buyer visits a product page, here's what happens:</p>
+
+  <div class="callout shopify">
+    <span class="icon">🟢</span>
+    <div>
+      <strong>Shopify concept: Theme App Extension</strong><br>
+      A <strong>Theme App Extension</strong> is a block that merchants drop into their Shopify theme via the theme editor. It renders custom UI on the storefront <em>without modifying the theme's source code</em>. This app provides a Liquid block (<code>personalizer.liquid</code>) that creates a mount point for the React widget.
+    </div>
+  </div>
+
+  <h3>The Injection Chain</h3>
+  <div class="sequence">
+    <div class="seq-step">
+      <div class="step-num shopify">1</div>
+      <div class="step-body">
+        <div class="step-title">Liquid block reads the product metafield</div>
+        <div class="step-desc"><code>product.metafields.app.customization_config.value</code> — if <code>enabled == true</code>, renders the mount point</div>
+        <div class="step-file"><span class="file-link">📄 extensions/theme-extension/blocks/personalizer.liquid</span></div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num storefront">2</div>
+      <div class="step-body">
+        <div class="step-title">Mount <code>&lt;div id="product-personalizer-root"&gt;</code> with data attributes</div>
+        <div class="step-desc"><code>data-product-id</code>, <code>data-base-image</code>, <code>data-shop-domain</code>, <code>data-config</code> (the full JSON)</div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num storefront">3</div>
+      <div class="step-body">
+        <div class="step-title">Load <code>product-personalizer.js</code> (React micro-frontend, ~161KB)</div>
+        <div class="step-desc">On <code>DOMContentLoaded</code>, parses <code>data-config</code>, creates React root, renders <code>&lt;StorefrontCustomizer&gt;</code></div>
+        <div class="step-file"><span class="file-link">📄 app/storefront-widget/index.tsx — L577-607</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>The 6 Input Types</h3>
+  <p>All buyer selections are stored in a <code>fieldValues: Record&lt;string, string&gt;</code> state object, keyed by option ID:</p>
+  <table>
+    <thead><tr><th>Type</th><th>UI Element</th><th>Value Stored</th></tr></thead>
+    <tbody>
+      <tr><td><code>text</code></td><td>Single-line input</td><td>The typed text</td></tr>
+      <tr><td><code>select</code></td><td>Dropdown</td><td>Selected choice string</td></tr>
+      <tr><td><code>clipart</code></td><td>Image thumbnail grid</td><td>URL of selected image</td></tr>
+      <tr><td><code>swatch</code></td><td>Color circle buttons</td><td>Hex value (e.g. <code>#FF0000</code>)</td></tr>
+      <tr><td><code>file</code></td><td>Upload button</td><td>CDN URL of uploaded image</td></tr>
+      <tr><td><code>checkbox</code></td><td>Toggle checkbox</td><td><code>"Yes"</code> or <code>""</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>The Live Preview Canvas</h3>
+  <p>A 3-layer rendering pipeline runs in real-time as the buyer types:</p>
+
+  <pre><span class="comment">// Layer 1: StorefrontCustomizer triggers re-render on fieldValues change</span>
+useEffect(() => {
+  drawPersonalizerCanvas(canvasRef, fieldValues, ...)
+}, [fieldValues, bgImage, loadedLayerImages, overlayImage])
+
+<span class="comment">// Layer 2: canvasRenderer.ts — draws background, grid, resolves layout nodes</span>
+<span class="keyword">function</span> drawPersonalizerCanvas(...) {
+  <span class="comment">// 800×800 logical canvas</span>
+  <span class="comment">// Draw product mockup image (front/back/zoom views)</span>
+  <span class="comment">// Resolve layout nodes via PersonalizationConfig.resolve()</span>
+  VisualLayoutRenderer.drawToCanvas(ctx, nodes, params)
+}
+
+<span class="comment">// Layer 3: renderingSeam.ts — draws text, clipart, uploads</span>
+<span class="comment">// THIS IS THE SHARED SEAM: same class does client canvas + server SVG</span>
+<span class="keyword">class</span> VisualLayoutRenderer {
+  <span class="keyword">static</span> drawToCanvas(ctx, nodes, params)  <span class="comment">// client: HTML5 Canvas</span>
+  <span class="keyword">static</span> compileToSvg(nodes, params)       <span class="comment">// server: SVG for manufacturing</span>
+}</pre>
+
+  <div class="callout insight">
+    <span class="icon">💡</span>
+    <div>
+      <strong>The rendering seam</strong><br>
+      The <code>VisualLayoutRenderer</code> is the most architecturally interesting part of the app. The same class renders to HTML5 Canvas (client-side for live preview) <em>and</em> compiles to SVG (server-side for manufacturing print files). This means the buyer's preview is pixel-accurate to the manufacturing output.
+    </div>
+  </div>
+
+  <details>
+    <summary>📤 File Upload Flow — App Proxy</summary>
+    <div class="detail-body">
+      <div class="callout shopify">
+        <span class="icon">🟢</span>
+        <div>
+          <strong>Shopify concept: App Proxy</strong><br>
+          An <strong>App Proxy</strong> is a URL route hosted by Shopify that forwards requests from the storefront domain (e.g. <code>mystore.myshopify.com/apps/personalizer/upload</code>) to your app's backend server. This avoids CORS issues — the buyer's browser talks to the store domain, Shopify forwards to your server.
+        </div>
+      </div>
+      <p>When a buyer uploads an image:</p>
+      <ol>
+        <li>Client POSTs <code>FormData</code> to <code>/apps/personalizer/upload</code></li>
+        <li>App Proxy forwards to <code>app.proxy.upload.tsx</code></li>
+        <li>Server authenticates via <code>authenticate.public.appProxy</code></li>
+        <li><code>ShopifyFilePublisher.publish()</code> runs the 3-step pipeline: stage → S3 upload → register → poll for CDN URL</li>
+        <li>Returns <code>{success, fileId, url}</code> — the CDN URL is stored in <code>fieldValues[optionId]</code></li>
+      </ol>
+    </div>
+  </details>
+</section>
+
+<hr>
+
+<!-- ━━━ SECTION 4: CART & CHECKOUT ━━━ -->
+<section id="s4">
+  <h2><span class="num">4</span> Cart & Checkout — Where Pricing Happens</h2>
+  <p>This is the most critical flow for buyer impact. When the buyer clicks "Add to Cart", a carefully choreographed sequence runs:</p>
+
+  <h3>Cart Submission Interception</h3>
+  <div class="sequence">
+    <div class="seq-step">
+      <div class="step-num storefront">1</div>
+      <div class="step-body">
+        <div class="step-title">Intercept the native cart form</div>
+        <div class="step-desc">On mount, the widget finds the theme's <code>form[action*="/cart/add"]</code> and attaches a <code>submit</code> event listener</div>
+        <div class="step-file"><span class="file-link">📄 storefront-widget/index.tsx — L278-287</span></div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num storefront">2</div>
+      <div class="step-body">
+        <div class="step-title">Snapshot the canvas preview</div>
+        <div class="step-desc"><code>canvas.toDataURL("image/png", 0.7)</code> → convert to File → upload to <code>/apps/personalizer/upload</code> → get permanent CDN URL</div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num storefront">3</div>
+      <div class="step-body">
+        <div class="step-title">Inject hidden form inputs</div>
+        <div class="step-desc">Creates hidden <code>&lt;input&gt;</code> elements in the intercepted form:</div>
+      </div>
+    </div>
+  </div>
+
+  <pre><span class="comment">// Hidden properties injected into the cart form:</span>
+properties[<span class="string">_upcharge_amount</span>] = <span class="string">"5.00"</span>    <span class="comment">// underscore prefix = hidden from buyer</span>
+properties[<span class="string">_preview_url</span>]    = <span class="string">"https://cdn.shopify.com/..."</span>  <span class="comment">// hidden</span>
+properties[<span class="string">Your Name</span>]       = <span class="string">"Alice"</span>   <span class="comment">// visible to buyer in checkout</span>
+properties[<span class="string">Color</span>]            = <span class="string">"#FF0000"</span> <span class="comment">// visible to buyer</span></pre>
+
+  <div class="callout shopify">
+    <span class="icon">🟢</span>
+    <div>
+      <strong>Shopify concept: Line-item properties</strong><br>
+      Shopify's cart supports <code>properties</code> on each line item — arbitrary key-value pairs. By convention, keys starting with <code>_</code> (underscore) are hidden from the buyer in checkout and order confirmation, but still accessible to the app and admin. This is how the app hides internal data (<code>_upcharge_amount</code>, <code>_preview_url</code>) while showing buyer choices (<code>Your Name</code>, <code>Color</code>).
+    </div>
+  </div>
+
+  <h3>Cart Transform Function — Pricing Magic</h3>
+
+  <div class="callout shopify">
+    <span class="icon">🟢</span>
+    <div>
+      <strong>Shopify concept: Cart Transform (Shopify Function)</strong><br>
+      A <strong>Shopify Function</strong> runs inside Shopify's infrastructure (compiled to WASM), not on your server. <strong>Cart Transform</strong> is a specific extension point that lets you modify cart line items at checkout — adjusting prices, merging items, or changing images. It runs automatically on every cart operation.
+    </div>
+  </div>
+
+  <p>The Cart Transform Function reads the hidden properties and adjusts the price:</p>
+
+  <pre><span class="comment">// cart-transform-function/src/cart_transform_run.ts</span>
+<span class="keyword">for</span> (<span class="keyword">const</span> line <span class="keyword">of</span> cart.lines) {
+  <span class="keyword">const</span> upcharge = parseFloat(line.upchargeAmount?.value || <span class="string">"0"</span>)
+  <span class="keyword">const</span> previewUrl = line.previewUrl?.value
+
+  <span class="keyword">if</span> (upcharge > 0 || previewUrl) {
+    <span class="keyword">const</span> basePrice = parseFloat(line.cost.amountPerQuantity.amount)
+    <span class="keyword">const</span> newPrice = (basePrice + upcharge).toFixed(2)
+
+    operations.push({
+      update: {
+        cartLineId: line.id,
+        <span class="highlight">price: { adjustment: { fixedPricePerUnit: { amount: newPrice } } }</span>,
+        <span class="highlight">image: previewUrl ? { url: previewUrl } : undefined</span>
+      }
+    })
+  }
+}
+
+<span class="comment">// Example: $50 product + $5 upcharge → buyer sees $55 in cart</span>
+<span class="comment">// Cart thumbnail shows their personalized preview instead of stock photo</span></pre>
+
+  <h3>Checkout UI Extension — Showing Choices</h3>
+  <p>At checkout, a separate extension renders personalization details under each cart line item:</p>
+  <ul>
+    <li>Filters out hidden properties (keys starting with <code>_</code>) to show only buyer-visible choices</li>
+    <li>If <code>_preview_url</code> exists, renders a thumbnail of the customized product</li>
+    <li>Shows a styled card with "✨ Your Customization Choices" listing each option as a key-value pair</li>
+  </ul>
+  <p><span class="file-link">📄 extensions/checkout-personalization/src/Checkout.ts</span></p>
+</section>
+
+<hr>
+
+<!-- ━━━ SECTION 5: ORDER FULFILLMENT ━━━ -->
+<section id="s5">
+  <h2><span class="num">5</span> Order Fulfillment — Manufacturing Pipeline</h2>
+  <p>After the buyer completes checkout, a webhook triggers a background compilation pipeline that produces print-ready files for manufacturing.</p>
+
+  <div class="callout shopify">
+    <span class="icon">🟢</span>
+    <div>
+      <strong>Shopify concept: Webhooks</strong><br>
+      A <strong>webhook</strong> is an HTTP callback Shopify sends to your app when a specific event occurs. When an order is created, Shopify POSTs to your <code>webhooks.orders.create.tsx</code> endpoint with the full order payload. Your app must respond quickly (within 5 seconds) — hence the async background worker pattern.
+    </div>
+  </div>
+
+  <h3>The Background Worker Pipeline</h3>
+  <div class="sequence">
+    <div class="seq-step">
+      <div class="step-num shopify">1</div>
+      <div class="step-body">
+        <div class="step-title">Shopify fires <code>orders/create</code> webhook</div>
+        <div class="step-desc"><code>webhooks.orders.create.tsx</code> receives payload, extracts orderId</div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num server">2</div>
+      <div class="step-body">
+        <div class="step-title">Enqueue job → return 202 immediately</div>
+        <div class="step-desc"><code>enqueueWebhookJob()</code> creates a PENDING <code>OrderProcessingLog</code> in SQLite. Deduplicates — if log exists and FAILED, resets to PENDING.</div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num server">3</div>
+      <div class="step-body">
+        <div class="step-title">Background worker picks up PENDING jobs</div>
+        <div class="step-desc"><code>ensureWorkerRunning()</code> → singleton guard → <code>setImmediate</code> → <code>processQueue()</code> polls for PENDING logs</div>
+      </div>
+    </div>
+    <div class="seq-step">
+      <div class="step-num server">4</div>
+      <div class="step-body">
+        <div class="step-title"><code>compilePrintFiles()</code> — the heavy lifting</div>
+        <div class="step-desc">
+          <ol style="margin-top:6px">
+            <li>Fetch order + line items via Admin GraphQL</li>
+            <li>Filter personalized items (has custom attributes)</li>
+            <li>For each item: fetch product metafield → resolve config</li>
+            <li>Render SVG via <code>VisualLayoutRenderer.compileToSvg()</code></li>
+            <li>Publish SVG to Shopify Files → get CDN URL</li>
+            <li>Write <code>manufacturing_files</code> metafield on the order</li>
+            <li>Update log → COMPLETED</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Fulfillment Package Download</h3>
+  <p>When a merchant clicks "Download" in the Orders page, <code>app.proxy.download.tsx</code> calls <code>packageFulfillment()</code> which streams a ZIP containing:</p>
+
+  <pre>📁 order_12345.zip
+├── customizations.json        <span class="comment">← full order metadata</span>
+├── item_001/
+│   ├── specifications.txt     <span class="comment">← personalization choices as text</span>
+│   ├── uploads/
+│   │   └── customer_logo.png  <span class="comment">← buyer-uploaded images</span>
+│   └── print_layouts/
+│       ├── layout_design.png  <span class="comment">← preview image</span>
+│       └── vector_print_layout.svg  <span class="comment">← manufacturing-ready SVG</span>
+└── item_002/
+    └── ...</pre>
+
+  <div class="callout insight">
+    <span class="icon">💡</span>
+    <div>
+      <strong>The SVG compilation seam (again)</strong><br>
+      Remember the <code>VisualLayoutRenderer</code> from Section 3? Server-side, its <code>compileToSvg()</code> method fetches font binaries from the Asset DB, base64-encodes them as <code>@font-face</code> data URIs, inlines images as base64, and adds production cut lines with order/item metadata. Same coordinate math, different output format.
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ━━━ DATABASE ━━━ -->
+<section id="db">
+  <h2><span class="num">🗃️</span> Database Models (SQLite + Prisma)</h2>
+  <p>The app uses SQLite locally with 6 standalone models (no foreign key relations — all cross-model lookups done via <code>shop</code> key):</p>
+
+  <table>
+    <thead><tr><th>Model</th><th>Purpose</th><th>Key Fields</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Session</strong></td><td>Shopify OAuth tokens</td><td>shop, accessToken</td></tr>
+      <tr><td><strong>Template</strong></td><td>Reusable personalization blueprints</td><td>name, options (JSON with _linkedProductIds)</td></tr>
+      <tr><td><strong>Asset</strong></td><td>Global brand resources</td><td>type (FONT/COLOR/IMAGE/OPTION), value (JSON)</td></tr>
+      <tr><td><strong>AppSettings</strong></td><td>Per-shop global config</td><td>layoutMode, brandColor, dpiResolution, ...</td></tr>
+      <tr><td><strong>UpchargeMapping</strong></td><td>Maps upcharge prices to hidden Shopify products</td><td>price, productId, variantId</td></tr>
+      <tr><td><strong>OrderProcessingLog</strong></td><td>Tracks print file compilation status</td><td>orderId, status (PENDING→PROCESSING→COMPLETED/FAILED)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout insight">
+    <span class="icon">💡</span>
+    <div>
+      <strong>Why no Prisma relations?</strong><br>
+      Each model is scoped by <code>shop</code> (the Shopify store domain). Cross-model relationships are managed in application code rather than at the database level. This keeps the schema simple but means you can't use Prisma's <code>include</code> for eager loading — every join is manual.
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ━━━ QUIZ ━━━ -->
+<section id="quiz-section">
+  <h2><span class="num">🧪</span> Knowledge Check</h2>
+  <p>Test your understanding of the pipeline. Click the answer you think is correct.</p>
+
+  <div class="quiz" id="q1">
+    <h4>🧠 Question 1</h4>
+    <p>How does the storefront widget get the customization config for a product?</p>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q1')">It makes an API call to the app's backend server</button>
+    <button class="quiz-option" onclick="checkAnswer(this, true, 'q1')">The Liquid block reads it from the product's metafield and passes it as a data attribute</button>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q1')">It's bundled into the JavaScript file at build time</button>
+    <div class="quiz-feedback correct-fb" id="q1-correct">✅ Correct! The Liquid block reads <code>product.metafields.app.customization_config.value</code> and passes it as <code>data-config</code> on the mount div. The React app then parses this JSON on <code>DOMContentLoaded</code>. No API call needed — the data is already in the page.</div>
+    <div class="quiz-feedback wrong-fb" id="q1-wrong">❌ Not quite. The config is already on the product as a metafield. The Liquid block reads it server-side and embeds it as a <code>data-config</code> attribute — no client-side API call needed.</div>
+  </div>
+
+  <div class="quiz" id="q2">
+    <h4>🧠 Question 2</h4>
+    <p>Why does the Cart Transform Function exist? Why not just add the upcharge on the client side?</p>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q2')">It runs faster than client-side code</button>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q2')">Shopify requires all price changes to use Functions</button>
+    <button class="quiz-option" onclick="checkAnswer(this, true, 'q2')">Client-side price changes can be bypassed — the Function runs inside Shopify's infrastructure where it can't be tampered with</button>
+    <div class="quiz-feedback correct-fb" id="q2-correct">✅ Correct! If you only changed the displayed price in JavaScript, a savvy buyer could manipulate the DOM or use browser devtools to avoid the upcharge. Cart Transform runs as a WASM function inside Shopify's servers — it's tamper-proof. Shopify enforces the adjusted price at checkout.</div>
+    <div class="quiz-feedback wrong-fb" id="q2-wrong">❌ The key insight is <strong>security</strong>. Client-side price changes are trivially bypassable. Cart Transform runs inside Shopify's infrastructure (as WASM), making it tamper-proof. The function adjusts the actual checkout price, not just the display.</div>
+  </div>
+
+  <div class="quiz" id="q3">
+    <h4>🧠 Question 3</h4>
+    <p>What bridges the storefront widget data to the Cart Transform Function?</p>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q3')">A database record in SQLite</button>
+    <button class="quiz-option" onclick="checkAnswer(this, true, 'q3')">Hidden line-item properties (_upcharge_amount, _preview_url) injected into the cart form</button>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q3')">A webhook from the app server to Shopify</button>
+    <div class="quiz-feedback correct-fb" id="q3-correct">✅ Correct! The widget injects hidden <code>&lt;input&gt;</code> elements with names like <code>properties[_upcharge_amount]</code> into the native cart form. These become line-item properties that the Cart Transform Function reads via its GraphQL input query. The underscore prefix hides them from the buyer.</div>
+    <div class="quiz-feedback wrong-fb" id="q3-wrong">❌ The bridge is <strong>line-item properties</strong>. The widget injects hidden form inputs (<code>properties[_upcharge_amount]</code>) that Shopify attaches to the cart line. The Cart Transform Function reads these via its GraphQL input query.</div>
+  </div>
+
+  <div class="quiz" id="q4">
+    <h4>🧠 Question 4</h4>
+    <p>Why does the webhook handler return 202 immediately instead of compiling print files synchronously?</p>
+    <button class="quiz-option" onclick="checkAnswer(this, true, 'q4')">Shopify requires webhook responses within ~5 seconds, and SVG compilation + file publishing takes longer</button>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q4')">It's a REST API best practice to always return 202</button>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q4')">The print files are compiled by a third-party service</button>
+    <div class="quiz-feedback correct-fb" id="q4-correct">✅ Correct! Shopify expects webhook responses within 5 seconds — if you exceed this, Shopify will retry the webhook (and eventually disable it). Compiling SVGs, publishing to Shopify Files, and polling for CDN URLs can take 10-30+ seconds. So the handler enqueues a PENDING job and returns 202, letting the background worker process it asynchronously.</div>
+    <div class="quiz-feedback wrong-fb" id="q4-wrong">❌ The constraint is Shopify's webhook timeout (~5 seconds). SVG compilation + file publishing is slow (10-30+ seconds), so the handler must return immediately and process the job asynchronously via a background worker.</div>
+  </div>
+
+  <div class="quiz" id="q5">
+    <h4>🧠 Question 5</h4>
+    <p>What makes <code>VisualLayoutRenderer</code> architecturally special?</p>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q5')">It uses WebGL for GPU-accelerated rendering</button>
+    <button class="quiz-option" onclick="checkAnswer(this, true, 'q5')">It's a shared seam — the same class renders to HTML5 Canvas (client preview) and compiles to SVG (server manufacturing), ensuring pixel accuracy between preview and print</button>
+    <button class="quiz-option" onclick="checkAnswer(this, false, 'q5')">It uses server-side rendering to pre-render previews</button>
+    <div class="quiz-feedback correct-fb" id="q5-correct">✅ Correct! This is a rendering seam — a single abstraction with two implementations sharing the same coordinate math. <code>drawToCanvas()</code> runs client-side for real-time preview. <code>compileToSvg()</code> runs server-side for manufacturing. Because they share the same <code>LayoutNode</code> resolution and positioning logic, the buyer's preview is faithful to the final manufacturing output.</div>
+    <div class="quiz-feedback wrong-fb" id="q5-wrong">❌ The key is the <strong>shared seam</strong> pattern. <code>drawToCanvas()</code> (client) and <code>compileToSvg()</code> (server) share the same coordinate math and layout node resolution. This means the buyer's live preview accurately represents the final manufactured output.</div>
+  </div>
+</section>
+
+<hr>
+
+<!-- ━━━ SUMMARY ━━━ -->
+<section>
+  <h2 style="justify-content: center;">🎯 The Complete Picture</h2>
+  <div class="card glow">
+    <pre style="background:transparent; border:none; padding:0; margin:0; font-size: 0.78rem; line-height: 1.8;">
+<span class="keyword">MERCHANT SIDE</span>                           <span class="keyword">BUYER SIDE</span>
+─────────────                           ──────────
+
+⚙️ Admin Dashboard                      🛍️ Buyer visits product page
+   │                                        │
+   ├─ Templates (WYSIWYG canvas)            ├─ Liquid block reads metafield
+   ├─ Per-product config                    ├─ React widget mounts
+   ├─ Asset directory (fonts/colors)        ├─ Buyer types, selects, uploads
+   └─ Global settings                      ├─ Canvas preview updates live
+       │                                    │
+       ▼                                    ▼
+🔄 Template Sync                        🛒 Add to Cart
+   │                                        │
+   ├─ Upsert template in SQLite             ├─ Snapshot canvas → upload → CDN URL
+   ├─ Compute product delta                 ├─ Inject hidden properties:
+   └─ Publish metafields via GraphQL        │   _upcharge_amount, _preview_url
+       │                                    │   + visible choices (Name, Color)
+       ▼                                    │
+   📦 Product Metafield                     ▼
+   app.customization_config             ⚡ Cart Transform (WASM)
+       │                                    │
+       └────── reads ──────────────────────►├─ Adjusts price: base + upcharge
+                                            └─ Sets custom preview image
+                                                │
+                                                ▼
+                                            ✅ Checkout
+                                                │
+                                            ✨ Checkout UI Extension
+                                                │  shows personalization choices
+                                                ▼
+                                            📋 Order Created
+                                                │
+                                                ▼
+                                            📨 Webhook → enqueue PENDING job
+                                                │
+                                                ▼
+                                            🏭 Background Worker
+                                                ├─ Fetch order + metafields
+                                                ├─ Resolve config
+                                                ├─ Compile SVG (rendering seam)
+                                                ├─ Publish to Shopify Files
+                                                └─ Update order metafield
+                                                    │
+                                                    ▼
+                                            📦 Merchant downloads ZIP
+                                                ├─ customizations.json
+                                                ├─ specifications.txt
+                                                ├─ buyer uploads
+                                                └─ vector_print_layout.svg
+    </pre>
+  </div>
+</section>
+
+<div style="text-align: center; padding: 40px 0 60px; color: var(--text-faint); font-size: 0.82rem;">
+  Product Personalizer Explainer · Session 1 · <span id="date"></span>
+</div>
+
+</div><!-- /container -->
+</div><!-- /main-content -->
+
+<script>
+  // Quiz logic
+  function checkAnswer(btn, isCorrect, quizId) {
+    const quiz = document.getElementById(quizId);
+    const options = quiz.querySelectorAll('.quiz-option');
+    options.forEach(o => o.classList.add('disabled'));
+
+    if (isCorrect) {
+      btn.classList.add('correct');
+      const fb = document.getElementById(quizId + '-correct');
+      fb.classList.add('show');
+    } else {
+      btn.classList.add('wrong');
+      const fb = document.getElementById(quizId + '-wrong');
+      fb.classList.add('show');
+      // highlight correct answer
+      options.forEach(o => {
+        if (o.getAttribute('onclick').includes('true')) {
+          o.classList.add('correct');
+          o.classList.remove('disabled');
+        }
+      });
+    }
+  }
+
+  // Smooth scroll
+  function scrollTo(selector) {
+    document.querySelector(selector)?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // Date
+  document.getElementById('date').textContent = new Date().toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+</script>
+
+</body>
+</html>
