@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect, Form, useLoaderData } from "react-router";
 
-import { login } from "../../shopify.server";
+import { authenticate, login } from "../../shopify.server";
 
 import styles from "./styles.module.css";
 
@@ -9,7 +9,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
 
   if (url.searchParams.get("shop")) {
-    throw redirect(`/app?${url.searchParams.toString()}`);
+    return redirect(`/app?${url.searchParams.toString()}`);
+  }
+
+  try {
+    const { session } = await authenticate.admin(request);
+    if (session && session.shop) {
+      return redirect(`/app?shop=${session.shop}`);
+    }
+  } catch (error) {
+    // If not authenticated, we fall back to showing the login form
   }
 
   return { showForm: Boolean(login) };
